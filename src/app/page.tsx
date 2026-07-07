@@ -110,8 +110,9 @@ export default function DashboardPage() {
       <header className="mb-10">
         <SectionLabel>{programme.name}</SectionLabel>
         <h1 className="mt-2 font-display text-3xl leading-tight text-oxford md:text-4xl">
-          Your doctorate, rehearsed
-          <br className="hidden md:block" /> before it&apos;s real.
+          Your doctorate, rehearsed{" "}
+          <br className="hidden md:block" />
+          before it&apos;s real.
         </h1>
         <p className="mt-3 max-w-2xl text-sm leading-relaxed text-ink-soft">
           Every formal gate of the DPhil, laid out as a journey. Upload your

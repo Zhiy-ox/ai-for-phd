@@ -37,6 +37,21 @@ async function runStatusCommand(
 export async function checkClaudeAuth(): Promise<AuthStatus> {
   const bin = process.env.CLAUDE_BIN ?? "claude";
   const { ok, output } = await runStatusCommand(bin, ["auth", "status"]);
+  // `claude auth status` prints JSON: { loggedIn, email, subscriptionType, … }
+  try {
+    const parsed = JSON.parse(output) as {
+      loggedIn?: boolean;
+      email?: string;
+      subscriptionType?: string;
+    };
+    if (parsed.loggedIn === false) return { ok: false, detail: CLAUDE_FIX };
+    if (parsed.loggedIn === true) {
+      const who = [parsed.email, parsed.subscriptionType].filter(Boolean).join(" · ");
+      return { ok: true, detail: who ? `Logged in (${who})` : "Logged in" };
+    }
+  } catch {
+    // Not JSON — fall through to the text heuristics.
+  }
   if (!ok || /not.*log/i.test(output)) {
     return { ok: false, detail: CLAUDE_FIX };
   }

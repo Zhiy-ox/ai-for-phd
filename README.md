@@ -1,36 +1,76 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# AI for PhD
 
-## Getting Started
+Your Oxford DPhil, rehearsed before it's real. A single-user local web app that
+structures the doctorate as a journey of formal gates — Transfer of Status,
+Confirmation, papers & rebuttals, thesis, final viva — and lets AI both help
+you produce the documents and **play the institutional counterpart**: assessors
+grilling you in a mock transfer viva, a senior reviewer scoring your report
+against the departmental rubric.
 
-First, run the development server:
+**v1 flagship: Transfer of Status** — document workspace with rubric-based
+feedback, plus a mock transfer viva against a two-assessor AI panel that asks
+one question at a time, presses on vague answers, and ends with a GSO.2-style
+assessment report (per-criterion scores, strengths/weaknesses, verdict:
+Approved / Referred / Recommend MSc).
+
+## No API keys
+
+The AI runs on your existing subscriptions via locally installed CLIs:
+
+| Backend | Auth | SDK |
+|---|---|---|
+| **Claude Code** | your Claude subscription (`claude` login) | `@anthropic-ai/claude-agent-sdk` |
+| **Codex** | your ChatGPT subscription (`codex login`) | `@openai/codex-sdk` |
+
+Pick the backend per session; the Settings page shows live login status for
+both. If a session dies mid-viva (token expiry, usage window), the transcript
+is persisted and replayed into a fresh session — nothing is lost.
+
+## Run it
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+cd "/Users/xuzhiyu/Documents/AI for PhD"
+npm install
+npx tsx scripts/seed.ts     # seed stage instances (idempotent)
+npm run dev                 # → http://localhost:3000
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Requirements: Node ≥ 22.13 (uses built-in `node:sqlite`), Claude Code and/or
+Codex CLI installed and logged in. Binary paths are configured in `.env.local`
+(`CLAUDE_BIN`, `CODEX_BIN`); data lives in `data/` (gitignored).
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Typical flow
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+1. **Dashboard** — the journey map. Transfer of Status is active; other stages
+   are previews.
+2. **Upload your transfer report** (Documents tab of the stage, or the
+   Documents library). Prefer `.tex`/`.md` over PDF for extraction quality;
+   there is a paste-text fallback.
+3. **Get feedback** — one click runs a rubric review with anchored,
+   severity-graded findings and top actions.
+4. **Mock viva** — pick the report and a backend, then face Dr Chen and
+   Prof Whitfield. Answer in chat; they follow up when you're vague.
+5. **End viva & get assessment** — the panel deliberates and files a
+   GSO.2-style report.
 
-## Learn More
+## Architecture notes
 
-To learn more about Next.js, take a look at the following resources:
+- **Programme-as-data**: the whole pipeline renders from
+  `src/templates/oxford-dphil.ts` (zod-validated in `src/lib/template.ts`).
+  Another university/programme = another template file.
+- **Provider seam**: `src/lib/providers/types.ts` defines `LLMProvider`;
+  `claude.ts`/`codex.ts` adapt the two agent runtimes to plain streamed chat
+  (tools disabled, empty scratch cwd). A raw-API provider can be added later
+  for cloud deployment.
+- **Viva engine** (`src/lib/viva/`): question planner → panel system prompt →
+  one streamed LLM call per turn → SSE to the browser → assessment report.
+  Modality-agnostic; voice can be layered on without rework.
+- **Persistence**: `node:sqlite` (`data/app.db`) — stages, documents (with
+  extracted text), sessions, messages, reports, settings.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Tests & smoke
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+```bash
+npm test                          # 64 unit tests (no CLI/network needed)
+npx tsx scripts/smoke-providers.ts  # live check of both CLI backends (spends quota)
+```
