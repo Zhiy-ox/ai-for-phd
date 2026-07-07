@@ -45,6 +45,16 @@ Requirements: Node ≥ 22.13 (uses built-in `node:sqlite`), Claude Code and/or
 Codex CLI installed and logged in. Binary paths are configured in `.env.local`
 (`CLAUDE_BIN`, `CODEX_BIN`); data lives in `data/` (gitignored).
 
+## Voice answers
+
+In any live session you can answer by voice: the panel asks in chat, you press
+**Speak**, talk (pauses are fine — the mic stays open), press **Stop**, review
+the transcript in the composer, and **Send**. Transcription uses the browser's
+built-in Web Speech API — no keys, works in Chrome and Safari (Chrome routes
+audio through its speech service; recent Safari transcribes on-device). The
+**Read aloud** toggle in the session header speaks each panel question via the
+system voice.
+
 ## Typical flow
 
 1. **Dashboard** — the journey map. Transfer of Status is active; other stages

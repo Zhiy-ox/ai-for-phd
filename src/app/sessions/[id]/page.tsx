@@ -9,6 +9,7 @@ import { DEFAULT_PROGRAMME_ID, getSessionStyle, getStage } from "@/lib/template"
 import { apiGet, apiSend, messageOf } from "@/components/api";
 import { ProviderBadge, SessionStatusChip } from "@/components/status-chip";
 import { streamSessionEvents } from "@/components/use-sse-stream";
+import { cancelSpeech, speakAloud, useSpeechRecognition } from "@/components/use-speech";
 import { Button, ErrorBanner, PageLoading, Spinner } from "@/components/ui";
 
 interface SessionResponse {
@@ -82,8 +83,27 @@ export default function VivaRoomPage() {
   const [assessing, setAssessing] = useState(false);
   const [error, setError] = useState<{ message: string; hint?: string } | null>(null);
   const [input, setInput] = useState("");
+  const [readAloud, setReadAloud] = useState(false);
+  const readAloudRef = useRef(false);
+  useEffect(() => {
+    readAloudRef.current = readAloud;
+  }, [readAloud]);
   const scrollRef = useRef<HTMLDivElement>(null);
   const begunRef = useRef(false);
+
+  // Voice answers: finalized speech segments append to the composer.
+  const {
+    supported: micSupported,
+    listening,
+    interim,
+    error: micError,
+    start: startMic,
+    stop: stopMic,
+  } = useSpeechRecognition((finalText) => {
+    setInput((prev) => (prev ? `${prev} ${finalText}` : finalText));
+  });
+
+  useEffect(() => () => cancelSpeech(), []);
 
   const scrollToBottom = useCallback(() => {
     requestAnimationFrame(() => {
@@ -110,6 +130,7 @@ export default function VivaRoomPage() {
               { id: event.messageId, role: "panel", speaker, content: clean },
             ]);
             setLiveText(null);
+            if (readAloudRef.current) speakAloud(event.content);
             scrollToBottom();
             break;
           }
@@ -163,6 +184,7 @@ export default function VivaRoomPage() {
   }, [sessionId, runTurn, scrollToBottom]);
 
   async function send() {
+    if (listening) stopMic();
     const text = input.trim();
     if (!text || streaming) return;
     setInput("");
@@ -206,6 +228,18 @@ export default function VivaRoomPage() {
         <ProviderBadge provider={session.provider} />
         <SessionStatusChip status={session.status} />
         <span className="ml-auto flex items-center gap-2">
+          <Button
+            variant="ghost"
+            onClick={() => {
+              setReadAloud((v) => {
+                if (v) cancelSpeech();
+                return !v;
+              });
+            }}
+            title="Read the panel's questions aloud"
+          >
+            {readAloud ? "🔊 Read aloud" : "🔇 Read aloud"}
+          </Button>
           {existingReport ? (
             <Link
               href={`/reports/${existingReport.id}`}
@@ -264,10 +298,18 @@ export default function VivaRoomPage() {
         </div>
       ) : null}
 
+      {micError ? (
+        <div className="mt-3">
+          <ErrorBanner message={micError} />
+        </div>
+      ) : null}
+
       <div className="mt-3">
         <div className="flex items-end gap-2">
           <textarea
-            value={input}
+            value={
+              listening && interim ? `${input}${input ? " " : ""}${interim}` : input
+            }
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={(e) => {
               if (e.key === "Enter" && !e.shiftKey) {
@@ -276,18 +318,56 @@ export default function VivaRoomPage() {
               }
             }}
             rows={3}
+            readOnly={listening}
             disabled={!canSpeak || streaming}
             placeholder={
               canSpeak
-                ? "Answer the panel… (Enter to send, Shift+Enter for a new line)"
+                ? listening
+                  ? "Listening — speak your answer…"
+                  : "Answer the panel — type, or press the mic and speak. (Enter to send)"
                 : "This viva has ended."
             }
-            className="flex-1 resize-none rounded-xl border border-line bg-white px-4 py-3 text-sm leading-relaxed text-ink focus:border-oxford focus:outline-none disabled:opacity-60"
+            className={`flex-1 resize-none rounded-xl border bg-white px-4 py-3 text-sm leading-relaxed text-ink focus:border-oxford focus:outline-none disabled:opacity-60 ${
+              listening ? "border-red-300 ring-1 ring-red-200" : "border-line"
+            }`}
           />
+          <Button
+            variant={listening ? "danger" : "secondary"}
+            onClick={listening ? stopMic : startMic}
+            disabled={!canSpeak || streaming || !micSupported}
+            title={
+              micSupported
+                ? listening
+                  ? "Stop recording"
+                  : "Record a voice answer"
+                : "Voice input needs Chrome or Safari"
+            }
+          >
+            {listening ? (
+              <>
+                <span className="h-2 w-2 animate-pulse rounded-full bg-red-500" />
+                Stop
+              </>
+            ) : (
+              <>
+                <svg viewBox="0 0 20 20" fill="none" className="h-4 w-4" aria-hidden="true">
+                  <rect x="7" y="2.5" width="6" height="10" rx="3" stroke="currentColor" strokeWidth="1.5" />
+                  <path d="M4.5 9.5a5.5 5.5 0 0 0 11 0M10 15v2.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+                </svg>
+                Speak
+              </>
+            )}
+          </Button>
           <Button onClick={send} disabled={!canSpeak || streaming || input.trim() === ""}>
             {streaming ? <Spinner /> : "Send"}
           </Button>
         </div>
+        {listening ? (
+          <p className="mt-1.5 text-xs text-ink-faint">
+            Recording — press <span className="font-medium text-ink-soft">Stop</span> to
+            review your answer, then Send. Pausing briefly is fine; the mic stays open.
+          </p>
+        ) : null}
       </div>
     </div>
   );
