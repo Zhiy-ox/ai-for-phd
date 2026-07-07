@@ -14,7 +14,14 @@ import { extractText } from "@/lib/extraction/extract";
 
 export const dynamic = "force-dynamic";
 
-const DocumentKindSchema = z.enum(["transfer_report", "proposal", "paper", "other"]);
+const DocumentKindSchema = z.enum([
+  "transfer_report",
+  "confirmation_report",
+  "proposal",
+  "paper",
+  "referee_reports",
+  "other",
+]);
 
 export async function GET(request: Request): Promise<Response> {
   try {

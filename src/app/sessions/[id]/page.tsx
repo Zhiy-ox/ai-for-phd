@@ -5,6 +5,7 @@ import { useParams, useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { MessageRow, SessionRow } from "@/lib/db/repos/sessions";
 import type { ReportRow } from "@/lib/db/repos/reports";
+import { DEFAULT_PROGRAMME_ID, getSessionStyle, getStage } from "@/lib/template";
 import { apiGet, apiSend, messageOf } from "@/components/api";
 import { ProviderBadge, SessionStatusChip } from "@/components/status-chip";
 import { streamSessionEvents } from "@/components/use-sse-stream";
@@ -21,6 +22,16 @@ interface ChatEntry {
   role: "user" | "panel";
   speaker: string | null;
   content: string;
+}
+
+// "Mock viva — Transfer of Status", "Rebuttal sparring — Papers & Rebuttals", …
+function sessionTitle(stageId: string): string {
+  try {
+    const stage = getStage(DEFAULT_PROGRAMME_ID, stageId);
+    return `${getSessionStyle(stage).label} — ${stage.title}`;
+  } catch {
+    return "Session";
+  }
 }
 
 // Panel utterances open with "[Dr Chen]" / "[Prof Whitfield]". Pull the tag
@@ -191,7 +202,7 @@ export default function VivaRoomPage() {
         <Link href="/sessions" className="text-sm text-ink-faint hover:text-oxford">
           ← Sessions
         </Link>
-        <h1 className="font-display text-xl text-oxford">Mock transfer viva</h1>
+        <h1 className="font-display text-xl text-oxford">{sessionTitle(session.stage_id)}</h1>
         <ProviderBadge provider={session.provider} />
         <SessionStatusChip status={session.status} />
         <span className="ml-auto flex items-center gap-2">

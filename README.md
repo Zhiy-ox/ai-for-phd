@@ -7,11 +7,17 @@ you produce the documents and **play the institutional counterpart**: assessors
 grilling you in a mock transfer viva, a senior reviewer scoring your report
 against the departmental rubric.
 
-**v1 flagship: Transfer of Status** — document workspace with rubric-based
-feedback, plus a mock transfer viva against a two-assessor AI panel that asks
-one question at a time, presses on vague answers, and ends with a GSO.2-style
-assessment report (per-criterion scores, strengths/weaknesses, verdict:
-Approved / Referred / Recommend MSc).
+**Interactive stages:**
+
+- **Transfer of Status** — rubric feedback on the transfer report + mock viva
+  (Dr Chen / Prof Whitfield), ending in a GSO.2-style assessment (Approved /
+  Referred / Recommend MSc).
+- **Confirmation of Status** — same workflow against a completion-focused
+  panel (Dr Okafor / Prof Lindqvist): progress since transfer, thesis outline,
+  timetable to submission (GSO.14).
+- **Papers & Rebuttals** — upload a manuscript and (optionally) the real
+  referee reports, then spar with Reviewer 2 and an associate editor before
+  writing the actual response letter. Verdict: minor / major revision / reject.
 
 ## No API keys
 

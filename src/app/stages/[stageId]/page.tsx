@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import type { ProgrammeTemplate, StageTemplate } from "@/lib/template";
+import { getSessionStyle, type ProgrammeTemplate, type StageTemplate } from "@/lib/template";
 import type { StageInstance, StageStatus } from "@/lib/db/repos/stage-instances";
 import type { DocumentSummary } from "@/lib/db/repos/documents";
 import type { SessionRow } from "@/lib/db/repos/sessions";
@@ -15,6 +15,7 @@ import {
   apiSend,
   formatDateTime,
   messageOf,
+  STAGE_PRIMARY_KIND,
 } from "@/components/api";
 import { KindBadge, ProviderBadge, StageStatusChip } from "@/components/status-chip";
 import { ProviderPicker } from "@/components/provider-picker";
@@ -173,7 +174,7 @@ function DocumentsTab({ stage }: { stage: StageTemplate }) {
 
       <UploadDropzone
         stageId={stage.id}
-        defaultKind={stage.id === "transfer" ? "transfer_report" : "other"}
+        defaultKind={STAGE_PRIMARY_KIND[stage.id] ?? "other"}
         onUploaded={load}
       />
 
@@ -250,7 +251,8 @@ function VivaTab({ stage }: { stage: StageTemplate }) {
       .then((r) => {
         const usable = r.documents.filter((d) => d.has_text);
         setDocs(usable);
-        const report = usable.find((d) => d.kind === "transfer_report") ?? usable[0];
+        const preferredKind = STAGE_PRIMARY_KIND[stage.id];
+        const report = usable.find((d) => d.kind === preferredKind) ?? usable[0];
         if (report) setPrimary(report.id);
       })
       .catch((e) => setError(messageOf(e)));
@@ -305,7 +307,7 @@ function VivaTab({ stage }: { stage: StageTemplate }) {
         ) : docs.length === 0 ? (
           <EmptyState
             title="No readable documents"
-            hint="The panel needs your transfer report. Upload it in the Documents tab first."
+            hint="The panel needs the document under examination. Upload it in the Documents tab first."
           />
         ) : (
           <ul className="mt-2 space-y-2">
@@ -354,7 +356,9 @@ function VivaTab({ stage }: { stage: StageTemplate }) {
 
       <Button onClick={begin} disabled={!primary || starting}>
         {starting ? <Spinner /> : null}
-        {starting ? "The panel is reading your report…" : "Begin mock viva"}
+        {starting
+          ? "The panel is reading your submission…"
+          : `Begin ${getSessionStyle(stage).label.toLowerCase()}`}
       </Button>
       {starting ? (
         <p className="text-xs text-ink-faint">
@@ -472,7 +476,7 @@ export default function StagePage() {
 
   const tabs: { id: Tab; label: string }[] = [
     { id: "documents", label: "Documents" },
-    { id: "viva", label: "Mock viva" },
+    { id: "viva", label: getSessionStyle(stage).label },
     { id: "reports", label: "Reports" },
   ];
 
@@ -521,7 +525,7 @@ export default function StagePage() {
       ) : (
         <EmptyState
           title="This stage is coming soon"
-          hint="In this preview build, only Transfer of Status is fully interactive. Here's what this stage will offer:"
+          hint="This stage isn't interactive yet. Here's what it will offer:"
         >
           <div className="mt-2 flex flex-wrap justify-center gap-1.5">
             {stage.activities.map((a) => (

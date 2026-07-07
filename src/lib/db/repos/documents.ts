@@ -1,6 +1,12 @@
 import { getDb, newId, nowIso } from "../client";
 
-export type DocumentKind = "transfer_report" | "proposal" | "paper" | "other";
+export type DocumentKind =
+  | "transfer_report"
+  | "confirmation_report"
+  | "proposal"
+  | "paper"
+  | "referee_reports"
+  | "other";
 
 export interface DocumentRow {
   id: string;

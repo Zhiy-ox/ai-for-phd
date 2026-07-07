@@ -1,7 +1,7 @@
 // Post-viva assessment: one non-streaming completion by the panel secretary,
 // validated against VivaAssessment and rendered into a GSO-style markdown
 // report. On unrecoverable JSON failure the raw model text is stored instead.
-import { getStage } from "@/lib/template";
+import { getSessionStyle, getStage } from "@/lib/template";
 import type { StageTemplate } from "@/lib/template";
 import { getProvider } from "@/lib/providers/registry";
 import { getSession, listMessages } from "@/lib/db/repos/sessions";
@@ -93,7 +93,7 @@ function renderAssessmentMarkdown(stage: StageTemplate, a: VivaAssessment): stri
     .join("\n");
 
   const lines = [
-    `# ${stage.title} — Mock Viva Assessment${formRef}`,
+    `# ${stage.title} — ${getSessionStyle(stage).reportTitle}${formRef}`,
     "",
     `**Date:** ${date}`,
     `**Panel:** ${panel.map((p) => `${p.name} (${p.role})`).join(", ")}`,

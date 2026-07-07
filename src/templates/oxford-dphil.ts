@@ -157,7 +157,90 @@ export const oxfordDphil: ProgrammeTemplate = {
         },
       ],
       activities: ["doc_feedback", "mock_viva", "writing_support"],
-      implemented: false,
+      implemented: true,
+      assessment: {
+        panel: [
+          {
+            id: "internal",
+            name: "Dr Okafor",
+            role: "Internal assessor",
+            style:
+              "Completion-focused and forensic about time. Works backwards from the submission date: chapter by chapter, what exists, what is missing, and whether the remaining experiments actually fit in the terms left. Presses hard on anything labelled 'in progress'.",
+            focus: ["progress", "timetable", "thesis"],
+          },
+          {
+            id: "external",
+            name: "Prof Lindqvist",
+            role: "Second assessor",
+            style:
+              "Judges the work as a future examiner would. Asks whether the results now in hand amount to a doctoral-level contribution, how the chapters cohere into one thesis argument, and whether the candidate can defend the work against the strongest objections in the field.",
+            focus: ["contribution", "knowledge", "writing"],
+          },
+        ],
+        rubric: [
+          {
+            id: "progress",
+            title: "Progress since transfer",
+            description:
+              "Has the project delivered substantial, credible results since Transfer of Status — not just activity, but outcomes?",
+            weight: 1,
+          },
+          {
+            id: "contribution",
+            title: "Doctoral contribution",
+            description:
+              "Do the results in hand, plus the planned remainder, clearly amount to a distinct contribution worthy of a DPhil?",
+            weight: 1,
+          },
+          {
+            id: "thesis",
+            title: "Thesis outline & coherence",
+            description:
+              "Is there a convincing chapter plan in which the pieces of work form one coherent argument?",
+            weight: 1,
+          },
+          {
+            id: "timetable",
+            title: "Timetable to submission",
+            description:
+              "Is the plan to submission concrete, realistic, and robust to the usual slippage?",
+            weight: 1,
+          },
+          {
+            id: "knowledge",
+            title: "Subject knowledge",
+            description:
+              "Does the candidate command the field at the depth expected of someone about to defend a thesis in it?",
+            weight: 1,
+          },
+          {
+            id: "writing",
+            title: "Quality of the written report",
+            description:
+              "Is the confirmation report clear, well structured, and of near-thesis standard?",
+            weight: 0.5,
+          },
+        ],
+        verdicts: [
+          {
+            id: "confirmed",
+            label: "Status confirmed",
+            description: "The DPhil is on track; the candidate proceeds to submission.",
+          },
+          {
+            id: "referred",
+            label: "Referred",
+            description:
+              "Not yet ready — address the concerns and re-apply. One further attempt is permitted.",
+          },
+          {
+            id: "msc_route",
+            label: "Recommend MSc completion",
+            description:
+              "The panel recommends completing the work as a master's degree rather than a doctorate.",
+          },
+        ],
+      },
     },
     {
       id: "papers",
@@ -180,7 +263,92 @@ export const oxfordDphil: ProgrammeTemplate = {
         },
       ],
       activities: ["doc_feedback", "rebuttal_roleplay", "writing_support"],
-      implemented: false,
+      implemented: true,
+      assessment: {
+        panel: [
+          {
+            id: "reviewer2",
+            name: "Reviewer 2",
+            role: "Anonymous referee",
+            style:
+              "Sceptical, technically exacting, and allergic to overclaiming. Attacks the weakest link first: missing controls, unfair baselines, error bars, reproducibility, and any gap between what the abstract promises and what the data show. Fair in the end — but only after the author has earned it.",
+            focus: ["soundness", "novelty", "rebuttal"],
+          },
+          {
+            id: "editor",
+            name: "Dr Marchetti",
+            role: "Associate editor",
+            style:
+              "Balanced and outcome-oriented. Weighs significance for the journal's readership, pushes on clarity and framing, and tests whether the author's responses would actually satisfy the referees in writing — pressing the author to say precisely what revision they would make.",
+            focus: ["significance", "clarity", "rebuttal"],
+          },
+        ],
+        rubric: [
+          {
+            id: "novelty",
+            title: "Novelty",
+            description:
+              "Is the claimed advance genuinely new against the closest prior work, and is that prior work fairly represented?",
+            weight: 1,
+          },
+          {
+            id: "soundness",
+            title: "Technical soundness",
+            description:
+              "Do the methods, controls, statistics, and data actually support the claims as stated?",
+            weight: 1,
+          },
+          {
+            id: "significance",
+            title: "Significance",
+            description:
+              "Would this result matter to the field — does it change what others do or believe?",
+            weight: 1,
+          },
+          {
+            id: "clarity",
+            title: "Clarity & presentation",
+            description:
+              "Are the argument, figures, and framing clear enough for a busy reader to trust?",
+            weight: 0.5,
+          },
+          {
+            id: "rebuttal",
+            title: "Quality of the author's defence",
+            description:
+              "Did the author address criticisms head-on with evidence, concede gracefully where warranted, and commit to concrete revisions?",
+            weight: 1,
+          },
+        ],
+        verdicts: [
+          {
+            id: "minor_revision",
+            label: "Minor revision",
+            description:
+              "The rebuttal holds up; the paper needs only small, clearly-scoped changes.",
+          },
+          {
+            id: "major_revision",
+            label: "Major revision",
+            description:
+              "The core may survive, but significant additional work or rewriting is needed before acceptance.",
+          },
+          {
+            id: "reject",
+            label: "Reject",
+            description:
+              "The defence did not overcome the objections; the paper is not viable in its current form.",
+          },
+        ],
+        session: {
+          label: "Rebuttal sparring",
+          reportTitle: "Referee Panel Assessment",
+          brief:
+            "You are role-playing the referee panel of a selective peer-reviewed optics/photonics journal in a live rebuttal rehearsal. The candidate (the user) is the manuscript's first author, practising their defence before writing the real response letter. The first document is the manuscript under review; any further documents are the actual referee reports. Where referee reports are provided, ground your objections in them — raise each substantive point and press until it is properly answered. Where none are provided, raise the objections a demanding but competent reviewer would.",
+          opening:
+            "asking the author to state, in a few sentences, the paper's central claim and why it merits publication in this journal",
+        },
+      },
     },
     {
       id: "thesis",

@@ -4,7 +4,7 @@
 // simply runs without one.
 import { z } from "zod";
 import type { LLMProvider } from "@/lib/providers/types";
-import type { StageTemplate } from "@/lib/template";
+import { getSessionStyle, type StageTemplate } from "@/lib/template";
 import type { QuestionPlan } from "./types";
 import { completeJsonWithRetry } from "@/lib/shared/json-extract";
 
@@ -36,8 +36,18 @@ export async function generateQuestionPlan(
     .map((c) => `- "${c.id}" — ${c.title}: ${c.description}`)
     .join("\n");
 
+  const style = getSessionStyle(stage);
+  const convenorIntro = style.brief
+    ? [
+        `You are the convenor of the panel in the session described below, preparing the panel's question plan after reading the candidate's primary document.`,
+        "",
+        "# Session context",
+        style.brief,
+      ].join("\n")
+    : `You are the convenor of a University of Oxford ${stage.title} viva panel, preparing the panel's question plan after reading the candidate's report.`;
+
   const systemPrompt = [
-    `You are the convenor of a University of Oxford ${stage.title} viva panel, preparing the panel's question plan after reading the candidate's report.`,
+    convenorIntro,
     "",
     "# Rubric criteria (use these ids)",
     rubricLines,

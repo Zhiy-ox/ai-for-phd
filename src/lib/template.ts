@@ -35,6 +35,16 @@ export const StageGateSchema = z.object({
   formRef: z.string().optional(),
 });
 
+// Optional per-stage styling of the interview exercise. Defaults describe a
+// formal Oxford viva; the papers stage overrides them to frame a peer-review
+// rebuttal rehearsal instead.
+export const SessionStyleSchema = z.object({
+  label: z.string().optional(),
+  brief: z.string().optional(),
+  opening: z.string().optional(),
+  reportTitle: z.string().optional(),
+});
+
 export const StageTemplateSchema = z.object({
   id: z.string(),
   title: z.string(),
@@ -56,6 +66,7 @@ export const StageTemplateSchema = z.object({
       panel: z.array(PersonaTemplateSchema),
       rubric: z.array(RubricCriterionSchema),
       verdicts: z.array(VerdictTemplateSchema),
+      session: SessionStyleSchema.optional(),
     })
     .optional(),
 });
@@ -110,4 +121,22 @@ export function getStage(programmeId: string, stageId: string): StageTemplate {
   const stage = getProgramme(programmeId).stages.find((s) => s.id === stageId);
   if (!stage) throw new Error(`Unknown stage ${stageId} in programme ${programmeId}`);
   return stage;
+}
+
+export interface SessionStyle {
+  label: string;
+  brief?: string;
+  opening?: string;
+  reportTitle: string;
+}
+
+// Resolved session styling with viva defaults.
+export function getSessionStyle(stage: StageTemplate): SessionStyle {
+  const s = stage.assessment?.session;
+  return {
+    label: s?.label ?? "Mock viva",
+    brief: s?.brief,
+    opening: s?.opening,
+    reportTitle: s?.reportTitle ?? "Mock Viva Assessment",
+  };
 }

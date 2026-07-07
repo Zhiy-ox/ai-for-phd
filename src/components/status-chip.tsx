@@ -41,5 +41,6 @@ export function ProviderBadge({ provider }: { provider: ProviderId }) {
 }
 
 export function KindBadge({ kind }: { kind: DocumentKind }) {
-  return <Chip tone={kind === "transfer_report" ? "navy" : "neutral"}>{KIND_LABELS[kind] ?? kind}</Chip>;
+  const primary = kind === "transfer_report" || kind === "confirmation_report" || kind === "paper";
+  return <Chip tone={primary ? "navy" : "neutral"}>{KIND_LABELS[kind] ?? kind}</Chip>;
 }

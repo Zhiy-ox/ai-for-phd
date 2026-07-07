@@ -68,17 +68,28 @@ export const PROVIDER_LABELS: Record<ProviderId, string> = {
 
 export const KIND_LABELS: Record<DocumentKind, string> = {
   transfer_report: "Transfer report",
+  confirmation_report: "Confirmation report",
   proposal: "Proposal",
   paper: "Paper / manuscript",
+  referee_reports: "Referee reports",
   other: "Other",
 };
 
 export const DOCUMENT_KINDS: DocumentKind[] = [
   "transfer_report",
+  "confirmation_report",
   "proposal",
   "paper",
+  "referee_reports",
   "other",
 ];
+
+// The document kind each stage's interview examines first.
+export const STAGE_PRIMARY_KIND: Record<string, DocumentKind> = {
+  transfer: "transfer_report",
+  confirmation: "confirmation_report",
+  papers: "paper",
+};
 
 export const ACTIVITY_LABELS: Record<ActivityId, string> = {
   doc_feedback: "Document feedback",

@@ -3,9 +3,20 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import type { SessionRow } from "@/lib/db/repos/sessions";
+import { DEFAULT_PROGRAMME_ID, getSessionStyle, getStage } from "@/lib/template";
 import { apiGet, formatDateTime, messageOf } from "@/components/api";
 import { ProviderBadge, SessionStatusChip } from "@/components/status-chip";
 import { Card, EmptyState, ErrorBanner, PageLoading, SectionLabel } from "@/components/ui";
+
+function describeSession(s: SessionRow): string {
+  if (s.type !== "viva") return "Document review";
+  try {
+    const stage = getStage(DEFAULT_PROGRAMME_ID, s.stage_id);
+    return `${getSessionStyle(stage).label} — ${stage.title}`;
+  } catch {
+    return `Session — ${s.stage_id}`;
+  }
+}
 
 export default function SessionsPage() {
   const [sessions, setSessions] = useState<SessionRow[] | null>(null);
@@ -38,10 +49,7 @@ export default function SessionsPage() {
             <li key={s.id}>
               <Link href={`/sessions/${s.id}`} className="block">
                 <Card className="flex flex-wrap items-center gap-3 p-4 transition-shadow hover:shadow-md">
-                  <span className="font-medium text-oxford">
-                    {s.type === "viva" ? "Mock viva" : "Document review"}
-                  </span>
-                  <span className="text-sm text-ink-soft">{s.stage_id}</span>
+                  <span className="font-medium text-oxford">{describeSession(s)}</span>
                   <ProviderBadge provider={s.provider} />
                   <SessionStatusChip status={s.status} />
                   <span className="ml-auto text-xs text-ink-faint">
