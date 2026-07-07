@@ -1,0 +1,26 @@
+Transfer Report Abstract - Liquid-Crystal Photonics
+
+Candidate: A. Researcher
+Programme: DPhil in Engineering Science
+
+This report describes progress towards voxel-resolved control of the
+optical axis in liquid-crystal polymer networks written by two-photon
+polymerization. Conventional geometric-phase optics rely on a planar
+photoalignment layer that fixes the director pattern across the whole
+film thickness; the present work instead exploits the confinement of the
+two-photon voxel to imprint depth-varying director profiles, opening a
+route to genuinely three-dimensional flat optics.
+
+During the first year, a Nanoscribe-based writing protocol was developed
+for a commercial reactive mesogen mixture. The protocol yields optically
+uniform structures over 200 x 200 micrometre fields with birefringence
+retained after development. Polarisation gratings fabricated with this
+protocol show first-order diffraction efficiencies competitive with
+photoaligned references, while additionally supporting twist gradients
+along the optical path that a single alignment surface cannot produce.
+
+Remaining challenges include polymerization-induced shrinkage, which
+distorts tall structures, and the limited thermal stability of the
+unpolymerized mesogen film during long writes. Both are addressed in the
+work plan for the second year, alongside the headline goal: a stacked,
+achromatic Pancharatnam-Berry lens operating across the visible band.
