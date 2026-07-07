@@ -6,6 +6,7 @@ export type DocumentKind =
   | "proposal"
   | "paper"
   | "referee_reports"
+  | "thesis"
   | "other";
 
 export interface DocumentRow {

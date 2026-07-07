@@ -20,6 +20,7 @@ const DocumentKindSchema = z.enum([
   "proposal",
   "paper",
   "referee_reports",
+  "thesis",
   "other",
 ]);
 

@@ -72,6 +72,7 @@ export const KIND_LABELS: Record<DocumentKind, string> = {
   proposal: "Proposal",
   paper: "Paper / manuscript",
   referee_reports: "Referee reports",
+  thesis: "Thesis / chapters",
   other: "Other",
 };
 
@@ -81,6 +82,7 @@ export const DOCUMENT_KINDS: DocumentKind[] = [
   "proposal",
   "paper",
   "referee_reports",
+  "thesis",
   "other",
 ];
 
@@ -89,6 +91,8 @@ export const STAGE_PRIMARY_KIND: Record<string, DocumentKind> = {
   transfer: "transfer_report",
   confirmation: "confirmation_report",
   papers: "paper",
+  thesis: "thesis",
+  "final-viva": "thesis",
 };
 
 export const ACTIVITY_LABELS: Record<ActivityId, string> = {

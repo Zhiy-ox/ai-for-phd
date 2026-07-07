@@ -18,6 +18,12 @@ against the departmental rubric.
 - **Papers & Rebuttals** — upload a manuscript and (optionally) the real
   referee reports, then spar with Reviewer 2 and an associate editor before
   writing the actual response letter. Verdict: minor / major revision / reject.
+- **Thesis Writing** — chapter-by-chapter feedback against a thesis rubric
+  (argument, structure, rigor, literature, prose). Review-only: no panel here.
+- **Final Viva** — the full viva voce against an internal examiner (Dr Rahimi,
+  forensic, chapter by chapter) and an external (Prof Baumgartner, attacks
+  novelty against the field). Outcomes mirror Oxford's: pass / minor
+  corrections / major corrections / refer for resubmission / MPhil.
 
 ## No API keys
 

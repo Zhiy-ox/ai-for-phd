@@ -476,7 +476,10 @@ export default function StagePage() {
 
   const tabs: { id: Tab; label: string }[] = [
     { id: "documents", label: "Documents" },
-    { id: "viva", label: getSessionStyle(stage).label },
+    // Only stages with a panel get an interview tab (thesis is review-only).
+    ...(stage.assessment
+      ? [{ id: "viva" as Tab, label: getSessionStyle(stage).label }]
+      : []),
     { id: "reports", label: "Reports" },
   ];
 

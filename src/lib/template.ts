@@ -61,6 +61,9 @@ export const StageTemplateSchema = z.object({
   ),
   activities: z.array(ActivityIdSchema),
   implemented: z.boolean(),
+  // Rubric for document reviews on stages that have no assessment panel
+  // (e.g. thesis chapters). Stages with an assessment use its rubric instead.
+  reviewRubric: z.array(RubricCriterionSchema).optional(),
   assessment: z
     .object({
       panel: z.array(PersonaTemplateSchema),

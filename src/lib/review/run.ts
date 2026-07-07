@@ -26,7 +26,9 @@ export async function runDocReview(
   const stageId = opts.stageId ?? doc.stage_id ?? "transfer";
   const stage = getStage(DEFAULT_PROGRAMME_ID, stageId);
   const rubric =
-    stage.assessment?.rubric ?? getStage(DEFAULT_PROGRAMME_ID, "transfer").assessment?.rubric;
+    stage.assessment?.rubric ??
+    stage.reviewRubric ??
+    getStage(DEFAULT_PROGRAMME_ID, "transfer").assessment?.rubric;
   if (!rubric || rubric.length === 0) {
     throw new Error(`No rubric available for stage "${stageId}".`);
   }

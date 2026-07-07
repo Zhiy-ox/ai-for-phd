@@ -366,7 +366,44 @@ export const oxfordDphil: ProgrammeTemplate = {
         },
       ],
       activities: ["doc_feedback", "writing_support"],
-      implemented: false,
+      implemented: true,
+      reviewRubric: [
+        {
+          id: "argument",
+          title: "Central argument",
+          description:
+            "Does the chapter advance one clear argument that serves the thesis, with claims that follow from the evidence?",
+          weight: 1,
+        },
+        {
+          id: "structure",
+          title: "Structure & coherence",
+          description:
+            "Is the chapter well organised internally and clearly connected to what precedes and follows it?",
+          weight: 1,
+        },
+        {
+          id: "rigor",
+          title: "Technical rigor",
+          description:
+            "Are methods, derivations, uncertainties, and limitations treated at examination standard?",
+          weight: 1,
+        },
+        {
+          id: "literature",
+          title: "Literature integration",
+          description:
+            "Is the relevant work cited, fairly represented, and used to position the contribution?",
+          weight: 1,
+        },
+        {
+          id: "writing",
+          title: "Prose & presentation",
+          description:
+            "Is the writing precise and readable, with figures and tables that carry their weight?",
+          weight: 0.5,
+        },
+      ],
     },
     {
       id: "final-viva",
@@ -384,7 +421,103 @@ export const oxfordDphil: ProgrammeTemplate = {
         },
       ],
       activities: ["mock_viva", "viva_prep"],
-      implemented: false,
+      implemented: true,
+      assessment: {
+        panel: [
+          {
+            id: "internal",
+            name: "Dr Rahimi",
+            role: "Internal examiner",
+            style:
+              "Forensic and thorough. Has read every page and works through the thesis chapter by chapter: definitions, derivations, error analysis, consistency between chapters, and whether each claim in the conclusions is actually established in the body. Politely relentless about anything hand-waved.",
+            focus: ["methodology", "command", "quality"],
+          },
+          {
+            id: "external",
+            name: "Prof Baumgartner",
+            role: "External examiner",
+            style:
+              "A senior authority in the field. Opens broad — what does this thesis change about how the field thinks? — then attacks the novelty and significance of each contribution against the strongest published alternatives. Tests whether the candidate can defend the work as their own and knows its limits.",
+            focus: ["contribution", "defence", "command"],
+          },
+        ],
+        rubric: [
+          {
+            id: "contribution",
+            title: "Original contribution",
+            description:
+              "Does the thesis make a significant, original contribution to knowledge, worthy of a doctorate?",
+            weight: 1,
+          },
+          {
+            id: "command",
+            title: "Command of the field",
+            description:
+              "Does the candidate demonstrate deep knowledge of the field, the literature, and how the thesis sits within it?",
+            weight: 1,
+          },
+          {
+            id: "methodology",
+            title: "Methodological soundness",
+            description:
+              "Are the methods rigorous and well justified, with limitations understood and honestly treated?",
+            weight: 1,
+          },
+          {
+            id: "defence",
+            title: "Quality of the defence",
+            description:
+              "Under sustained challenge, does the candidate defend claims with evidence, reason clearly on their feet, and concede gracefully where the criticism lands?",
+            weight: 1,
+          },
+          {
+            id: "quality",
+            title: "Thesis quality",
+            description:
+              "Is the written thesis coherent, well structured, and of publishable standard in its presentation?",
+            weight: 0.5,
+          },
+        ],
+        verdicts: [
+          {
+            id: "pass",
+            label: "Pass — no corrections",
+            description: "The rare clean pass: the thesis is accepted as it stands.",
+          },
+          {
+            id: "minor_corrections",
+            label: "Pass with minor corrections",
+            description:
+              "The standard good outcome — typographical and small substantive fixes, typically within one to six months.",
+          },
+          {
+            id: "major_corrections",
+            label: "Pass with major corrections",
+            description:
+              "The thesis needs substantial but well-defined revision before the degree is awarded.",
+          },
+          {
+            id: "refer_resubmit",
+            label: "Refer for resubmission",
+            description:
+              "Significant further work is required; the thesis must be revised and re-examined.",
+          },
+          {
+            id: "mphil_award",
+            label: "Recommend MPhil award",
+            description:
+              "The work does not reach doctoral standard but merits a master's-level degree.",
+          },
+        ],
+        session: {
+          label: "Mock final viva",
+          reportTitle: "Final Viva Examination Report",
+          brief:
+            "You are role-playing BOTH examiners at a University of Oxford DPhil final viva voce examination. The candidate (the user) has submitted the thesis material below and must now defend it. Examine it the way real examiners do: establish the big picture first, then work through the material systematically — contribution by contribution, chapter by chapter — testing whether the work is the candidate's own, whether it merits the degree, and whether the candidate can defend every major claim against the strongest objections in the field.",
+          opening:
+            "conventionally, inviting the candidate to summarise the thesis — its central argument and the contributions they consider doctoral-level — in a few minutes",
+        },
+      },
     },
     {
       id: "corrections",
