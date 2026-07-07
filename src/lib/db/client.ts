@@ -37,7 +37,7 @@ function open(): DatabaseSync {
 }
 
 declare global {
-  // eslint-disable-next-line no-var
+   
   var __aiPhdDb: DatabaseSync | undefined;
 }
 
