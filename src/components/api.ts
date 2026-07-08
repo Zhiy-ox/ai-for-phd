@@ -88,6 +88,7 @@ export const DOCUMENT_KINDS: DocumentKind[] = [
 
 // The document kind each stage's interview examines first.
 export const STAGE_PRIMARY_KIND: Record<string, DocumentKind> = {
+  "prs-start": "proposal",
   transfer: "transfer_report",
   confirmation: "confirmation_report",
   papers: "paper",

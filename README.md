@@ -7,7 +7,10 @@ you produce the documents and **play the institutional counterpart**: assessors
 grilling you in a mock transfer viva, a senior reviewer scoring your report
 against the departmental rubric.
 
-**Interactive stages:**
+**All seven stages are interactive:**
+
+- **Probationer Research Student** — feedback on your research proposal and
+  literature review (question, significance, approach, literature, prose).
 
 - **Transfer of Status** — rubric feedback on the transfer report + mock viva
   (Dr Chen / Prof Whitfield), ending in a GSO.2-style assessment (Approved /
@@ -24,6 +27,9 @@ against the departmental rubric.
   forensic, chapter by chapter) and an external (Prof Baumgartner, attacks
   novelty against the field). Outcomes mirror Oxford's: pass / minor
   corrections / major corrections / refer for resubmission / MPhil.
+- **Corrections & Completion** — review of your corrections response against
+  what examiners actually check: coverage of every required point, substance
+  of each response, and traceability (page references they can verify fast).
 
 ## No API keys
 

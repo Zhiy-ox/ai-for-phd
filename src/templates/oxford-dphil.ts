@@ -31,7 +31,43 @@ export const oxfordDphil: ProgrammeTemplate = {
         },
       ],
       activities: ["writing_support", "doc_feedback"],
-      implemented: false,
+      implemented: true,
+      reviewRubric: [
+        {
+          id: "question",
+          title: "Research question",
+          description:
+            "Is there a clear, focused question that is answerable — and worth answering — within a DPhil?",
+          weight: 1,
+        },
+        {
+          id: "significance",
+          title: "Motivation & significance",
+          description:
+            "Does the document make a convincing case for why this problem matters to the field?",
+          weight: 1,
+        },
+        {
+          id: "approach",
+          title: "Proposed approach",
+          description:
+            "Are the planned methods and first experiments appropriate, concrete, and within reach of the available facilities?",
+          weight: 1,
+        },
+        {
+          id: "literature",
+          title: "Literature grounding",
+          description:
+            "Is the relevant prior work surveyed, fairly represented, and used to position the project?",
+          weight: 1,
+        },
+        {
+          id: "writing",
+          title: "Prose & presentation",
+          description: "Is the writing clear, precise, and well organised?",
+          weight: 0.5,
+        },
+      ],
     },
     {
       id: "transfer",
@@ -527,9 +563,50 @@ export const oxfordDphil: ProgrammeTemplate = {
         "Post-viva corrections (minor or major), final submission to the Examination Schools, and graduation.",
       typicalTiming: { from: 13, to: 14, label: "Post-viva" },
       gate: { type: "submission" },
-      requiredDocuments: [],
-      activities: ["writing_support"],
-      implemented: false,
+      requiredDocuments: [
+        {
+          id: "corrections_list",
+          title: "Examiners' corrections list",
+          description: "The list of required corrections from the viva report.",
+        },
+        {
+          id: "corrections_response",
+          title: "Corrections response",
+          description:
+            "Your point-by-point account of each correction and where it was made — what the examiners sign off on.",
+        },
+      ],
+      activities: ["doc_feedback", "writing_support"],
+      implemented: true,
+      reviewRubric: [
+        {
+          id: "completeness",
+          title: "Coverage of the corrections list",
+          description:
+            "Is every correction the examiners required addressed explicitly — none skipped, merged away, or quietly reinterpreted?",
+          weight: 1,
+        },
+        {
+          id: "responsiveness",
+          title: "Substance of the responses",
+          description:
+            "Do the changes genuinely resolve each concern rather than deflect it, with disagreements argued respectfully and with evidence?",
+          weight: 1,
+        },
+        {
+          id: "traceability",
+          title: "Traceability",
+          description:
+            "Can an examiner verify each change quickly — precise page/section references and quoted before/after text where it helps?",
+          weight: 1,
+        },
+        {
+          id: "writing",
+          title: "Quality of the revised text",
+          description: "Is the newly written material at the standard of the rest of the thesis?",
+          weight: 0.5,
+        },
+      ],
     },
   ],
 };
