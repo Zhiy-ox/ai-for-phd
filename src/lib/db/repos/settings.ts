@@ -6,12 +6,16 @@ export interface AppSettings {
   // Empty string means "use the provider's own default model".
   claude_model: string;
   codex_model: string;
+  // Stage id the user says they are at; "" means never set (fall back to
+  // the first active stage instance).
+  current_stage: string;
 }
 
 export const DEFAULT_SETTINGS: AppSettings = {
   default_provider: "claude",
   claude_model: "claude-sonnet-4-5",
   codex_model: "",
+  current_stage: "",
 };
 
 export function getSettings(): AppSettings {

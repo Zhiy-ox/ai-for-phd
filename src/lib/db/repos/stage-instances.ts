@@ -37,6 +37,32 @@ export function ensureSeeded(programme: ProgrammeTemplate): void {
   });
 }
 
+// The user declares where they are: earlier stages become 'passed', the
+// chosen stage 'active', later ones 'upcoming'. Recurring stages (papers)
+// stay 'active' once reached — they run alongside everything after them.
+// Individual statuses remain editable per stage afterwards.
+export function setCurrentStage(
+  programme: ProgrammeTemplate,
+  stageId: string,
+): StageInstance[] {
+  ensureSeeded(programme);
+  const ordered = [...programme.stages].sort((a, b) => a.ordinal - b.ordinal);
+  const idx = ordered.findIndex((s) => s.id === stageId);
+  if (idx < 0) throw new Error(`Unknown stage ${stageId} in programme ${programme.id}`);
+  const db = getDb();
+  const update = db.prepare(
+    "UPDATE stage_instances SET status = ? WHERE programme_id = ? AND stage_id = ?",
+  );
+  ordered.forEach((stage, i) => {
+    let status: StageStatus;
+    if (i === idx) status = "active";
+    else if (i < idx) status = stage.gate.type === "recurring" ? "active" : "passed";
+    else status = "upcoming";
+    update.run(status, programme.id, stage.id);
+  });
+  return listStageInstances(programme.id);
+}
+
 export function listStageInstances(programmeId: string): StageInstance[] {
   return getDb()
     .prepare("SELECT * FROM stage_instances WHERE programme_id = ?")

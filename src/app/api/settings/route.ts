@@ -7,6 +7,7 @@ const PutBodySchema = z.object({
   default_provider: z.enum(["claude", "codex"]).optional(),
   claude_model: z.string().optional(),
   codex_model: z.string().optional(),
+  current_stage: z.string().optional(),
 });
 
 export async function GET(): Promise<Response> {

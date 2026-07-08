@@ -451,7 +451,13 @@ export default function StagePage() {
   const stageId = params.stageId;
   const [data, setData] = useState<ProgrammeResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [tab, setTab] = useState<Tab>("documents");
+  // ?tab=viva|reports deep-links from the dashboard. Safe to read location in
+  // the initializer: nothing tab-dependent renders until data has loaded.
+  const [tab, setTab] = useState<Tab>(() => {
+    if (typeof window === "undefined") return "documents";
+    const t = new URLSearchParams(window.location.search).get("tab");
+    return t === "viva" || t === "reports" ? t : "documents";
+  });
 
   useEffect(() => {
     apiGet<ProgrammeResponse>("/api/programme")
