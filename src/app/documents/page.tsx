@@ -49,10 +49,10 @@ export default function DocumentsPage() {
     programme?.stages.find((s) => s.id === id)?.title ?? id ?? "—";
 
   return (
-    <div>
+    <div className="mx-auto max-w-[920px] px-5 py-12 md:px-9">
       <header className="mb-8">
         <SectionLabel>Library</SectionLabel>
-        <h1 className="mt-2 font-display text-3xl text-oxford">Documents</h1>
+        <h1 className="mt-2 font-display text-[34px] font-normal text-ink">Documents</h1>
         <p className="mt-2 max-w-2xl text-sm text-ink-soft">
           Everything the AI reads about your research lives here — report drafts,
           proposals, papers. Text is extracted on upload and fed whole into each

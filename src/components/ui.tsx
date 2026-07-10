@@ -47,11 +47,12 @@ export function Chip({
 /* ------------------------------------------------------------------ */
 
 const BUTTON_VARIANTS = {
-  primary: "bg-oxford text-white hover:bg-oxford-mid",
+  primary:
+    "bg-oxford text-white shadow-[0_10px_24px_-12px_rgba(41,83,196,0.7)] hover:bg-oxford-mid hover:-translate-y-px",
   secondary:
-    "border border-line bg-white text-ink hover:border-oxford/40 hover:text-oxford",
+    "border border-line bg-card text-ink hover:border-oxford/40 hover:text-oxford",
   ghost: "text-ink-soft hover:bg-oxford-faint hover:text-oxford",
-  danger: "border border-red-200 bg-white text-red-700 hover:bg-red-50",
+  danger: "border border-red-200 bg-card text-red-700 hover:bg-red-50",
 } as const;
 
 export type ButtonVariant = keyof typeof BUTTON_VARIANTS;
@@ -65,7 +66,7 @@ export function Button({
   return (
     <button
       {...props}
-      className={`inline-flex items-center justify-center gap-2 rounded-lg px-3.5 py-2 text-sm font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${BUTTON_VARIANTS[variant]} ${className}`}
+      className={`inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold transition-all disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:translate-y-0 ${BUTTON_VARIANTS[variant]} ${className}`}
     >
       {children}
     </button>
@@ -159,7 +160,7 @@ export function EmptyState({
 
 export function SectionLabel({ children }: { children: ReactNode }) {
   return (
-    <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-ink-faint">
+    <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-ink-faint">
       {children}
     </p>
   );
@@ -173,7 +174,7 @@ export function Card({
   className?: string;
 }) {
   return (
-    <div className={`rounded-xl border border-line bg-white ${className}`}>
+    <div className={`rounded-2xl border border-line bg-card ${className}`}>
       {children}
     </div>
   );

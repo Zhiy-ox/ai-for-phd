@@ -490,13 +490,13 @@ export default function StagePage() {
   ];
 
   return (
-    <div>
+    <div className="mx-auto max-w-[880px] px-5 py-11 md:px-9">
       <Link href="/" className="text-sm text-ink-faint hover:text-oxford">
         ← Journey
       </Link>
       <header className="mb-6 mt-3">
         <div className="flex flex-wrap items-center gap-3">
-          <h1 className="font-display text-3xl text-oxford">{stage.title}</h1>
+          <h1 className="font-display text-[38px] font-normal text-ink">{stage.title}</h1>
           {instance ? <StageStatusChip status={instance.status} /> : null}
           {stage.gate.formRef ? <Chip tone="brass">{stage.gate.formRef}</Chip> : null}
           <span className="text-xs text-ink-faint">{stage.typicalTiming.label}</span>

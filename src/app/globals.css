@@ -1,8 +1,8 @@
 @import "tailwindcss";
 
 :root {
-  --background: #f7f6f2;
-  --foreground: #1f2933;
+  --background: #f5f2ea;
+  --foreground: #16202e;
   color-scheme: light;
 }
 
@@ -10,24 +10,33 @@
   --color-background: var(--background);
   --color-foreground: var(--foreground);
 
-  /* Palette: Oxford blue over warm paper. */
-  --color-paper: #f7f6f2;
-  --color-ink: #1f2933;
-  --color-ink-soft: #55616e;
-  --color-ink-faint: #8a94a0;
-  --color-line: #e3e0d6;
-  --color-oxford: #002147;
-  --color-oxford-deep: #001731;
-  --color-oxford-mid: #17406b;
-  --color-oxford-soft: #e8edf4;
-  --color-oxford-faint: #f1f4f8;
-  --color-brass: #8f7226;
-  --color-brass-soft: #f3ecda;
+  /* Palette: royal blue over warm cream (2026 redesign). The `oxford`
+     token is the primary brand accent — now a brighter #2953c4. */
+  --color-paper: #f5f2ea;
+  --color-card: #fffdf8;
+  --color-ink: #16202e;
+  --color-ink-soft: #5b6673;
+  --color-ink-faint: #98a1ab;
+  --color-ink-mute: #8b93a3;
+  --color-ink-dim: #b3bac2;
+  --color-line: #e5e0d2;
+  --color-line-soft: #eee9db;
+  --color-oxford: #2953c4;
+  --color-oxford-deep: #0a1626;
+  --color-oxford-mid: #3661d9;
+  --color-oxford-soft: #e8eef9;
+  --color-oxford-faint: #f1f4fb;
+  --color-ash: #0a1626;
+  --color-ash-mid: #17406b;
+  --color-brass: #a8843c;
+  --color-brass-soft: #f3ead2;
+  --color-gold: #f0d9a0;
+  --color-gold-bg: #faf7ef;
+  --color-verdant: #2eb87a;
 
   --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, -apple-system, sans-serif;
   --font-mono: var(--font-geist-mono), ui-monospace, SFMono-Regular, Menlo, monospace;
-  --font-display: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia,
-    "Source Serif 4", "Times New Roman", serif;
+  --font-display: var(--font-newsreader), "Iowan Old Style", Georgia, "Times New Roman", serif;
 }
 
 body {
@@ -38,6 +47,79 @@ body {
 ::selection {
   background: var(--color-oxford);
   color: #ffffff;
+}
+
+/* ---------------------------------------------------------------- */
+/* Keyframes used across the redesigned screens                      */
+/* ---------------------------------------------------------------- */
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+@keyframes riseSm {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+@keyframes growBar {
+  from {
+    transform: scaleX(0);
+  }
+  to {
+    transform: scaleX(1);
+  }
+}
+@keyframes wave {
+  0%,
+  100% {
+    transform: scaleY(0.35);
+  }
+  50% {
+    transform: scaleY(1);
+  }
+}
+@keyframes blink {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.15;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
 }
 
 /* ---------------------------------------------------------------- */

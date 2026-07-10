@@ -250,7 +250,7 @@ export default function ReportPage() {
   const review = !isViva ? parseRubric<DocReviewResult>(report) : null;
 
   return (
-    <div>
+    <div className="mx-auto max-w-[880px] px-5 py-11 md:px-9">
       <Link
         href={report.session_id ? `/sessions/${report.session_id}` : report.document_id ? `/documents/${report.document_id}` : "/"}
         className="text-sm text-ink-faint hover:text-oxford"
@@ -259,7 +259,7 @@ export default function ReportPage() {
       </Link>
       <header className="mb-6 mt-3">
         <div className="flex flex-wrap items-center gap-3">
-          <h1 className="font-display text-3xl text-oxford">
+          <h1 className="font-display text-[32px] font-normal text-ink">
             {isViva ? "Viva assessment report" : "Document review"}
           </h1>
         </div>

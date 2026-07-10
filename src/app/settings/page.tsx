@@ -49,10 +49,10 @@ export default function SettingsPage() {
   const providers: ProviderId[] = ["claude", "codex"];
 
   return (
-    <div className="max-w-2xl">
+    <div className="mx-auto max-w-[700px] px-5 py-12 md:px-9">
       <header className="mb-8">
         <SectionLabel>Configuration</SectionLabel>
-        <h1 className="mt-2 font-display text-3xl text-oxford">Settings</h1>
+        <h1 className="mt-2 font-display text-[34px] font-normal text-ink">Settings</h1>
       </header>
 
       <div className="space-y-6">

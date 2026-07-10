@@ -7,10 +7,9 @@ import type { MessageRow, SessionRow } from "@/lib/db/repos/sessions";
 import type { ReportRow } from "@/lib/db/repos/reports";
 import { DEFAULT_PROGRAMME_ID, getSessionStyle, getStage } from "@/lib/template";
 import { apiGet, apiSend, messageOf } from "@/components/api";
-import { ProviderBadge, SessionStatusChip } from "@/components/status-chip";
 import { streamSessionEvents } from "@/components/use-sse-stream";
 import { cancelSpeech, speakAloud, useSpeechRecognition } from "@/components/use-speech";
-import { Button, ErrorBanner, PageLoading, Spinner } from "@/components/ui";
+import { ErrorBanner, PageLoading, Spinner } from "@/components/ui";
 
 interface SessionResponse {
   session: SessionRow;
@@ -35,6 +34,15 @@ function sessionTitle(stageId: string): string {
   }
 }
 
+// The assessor personas for the panel bench.
+function panelFor(stageId: string): { id: string; name: string; role: string }[] {
+  try {
+    return getStage(DEFAULT_PROGRAMME_ID, stageId).assessment?.panel ?? [];
+  } catch {
+    return [];
+  }
+}
+
 // Panel utterances open with "[Dr Chen]" / "[Prof Whitfield]". Pull the tag
 // out for the speaker chip and strip it from the displayed text.
 function splitSpeaker(content: string): { speaker: string | null; text: string } {
@@ -43,14 +51,31 @@ function splitSpeaker(content: string): { speaker: string | null; text: string }
   return { speaker: m[1], text: content.slice(m[0].length) };
 }
 
-function PanelBubble({ speaker, text }: { speaker: string | null; text: string }) {
+function PanelBubble({
+  speaker,
+  text,
+  streaming,
+}: {
+  speaker: string | null;
+  text: string;
+  streaming?: boolean;
+}) {
   return (
-    <div className="max-w-[85%] self-start">
-      <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-oxford/70">
+    <div className="max-w-[88%] self-start" style={{ animation: "riseSm 0.4s ease both" }}>
+      <p className="mb-1.5 text-[10.5px] font-semibold uppercase tracking-[0.14em]" style={{ color: "#f0d9a0" }}>
         {speaker ?? "Panel"}
       </p>
-      <div className="whitespace-pre-wrap rounded-2xl rounded-tl-sm border border-line bg-white px-4 py-3 text-sm leading-relaxed text-ink shadow-sm">
+      <div
+        className="whitespace-pre-wrap rounded-2xl rounded-tl-sm px-5 py-4 font-display text-[16.5px] leading-relaxed"
+        style={{ background: "#f5f2ea", color: "#16202e", boxShadow: "0 12px 30px -18px rgba(0,0,0,0.6)" }}
+      >
         {text}
+        {streaming ? (
+          <span
+            className="ml-0.5 inline-block h-4 w-0.5 align-[-2px]"
+            style={{ background: "#2953c4", animation: "blink 0.9s step-end infinite" }}
+          />
+        ) : null}
       </div>
     </div>
   );
@@ -58,12 +83,37 @@ function PanelBubble({ speaker, text }: { speaker: string | null; text: string }
 
 function CandidateBubble({ text }: { text: string }) {
   return (
-    <div className="max-w-[85%] self-end">
-      <p className="mb-1 text-right text-[11px] font-semibold uppercase tracking-wide text-ink-faint">
+    <div className="max-w-[88%] self-end" style={{ animation: "riseSm 0.4s ease both" }}>
+      <p className="mb-1.5 text-right text-[10.5px] font-semibold uppercase tracking-[0.14em]" style={{ color: "rgba(245,242,234,0.4)" }}>
         You
       </p>
-      <div className="whitespace-pre-wrap rounded-2xl rounded-tr-sm bg-oxford px-4 py-3 text-sm leading-relaxed text-white">
+      <div
+        className="whitespace-pre-wrap rounded-2xl rounded-tr-sm px-[18px] py-3.5 text-sm leading-relaxed text-white"
+        style={{ background: "#2953c4" }}
+      >
         {text}
+      </div>
+    </div>
+  );
+}
+
+// The panel bench chip for each assessor.
+function BenchChip({ name, role }: { name: string; role: string }) {
+  const initial = name.replace(/^(Dr|Prof|Professor)\.?\s+/i, "").charAt(0).toUpperCase();
+  return (
+    <div
+      className="flex items-center gap-2.5 rounded-full py-1.5 pl-2 pr-4"
+      style={{ background: "rgba(255,255,255,0.05)", border: "1px solid rgba(240,217,160,0.2)" }}
+    >
+      <div
+        className="flex h-8 w-8 items-center justify-center rounded-full font-display text-[13px]"
+        style={{ background: "linear-gradient(135deg,#17406b,#0a1626)", border: "1px solid rgba(240,217,160,0.4)", color: "#f0d9a0" }}
+      >
+        {initial}
+      </div>
+      <div>
+        <p className="text-[12.5px] font-semibold" style={{ color: "#f5f2ea" }}>{name}</p>
+        <p className="text-[10px]" style={{ color: "rgba(245,242,234,0.45)" }}>{role}</p>
       </div>
     </div>
   );
@@ -95,7 +145,6 @@ export default function VivaRoomPage() {
   const {
     supported: micSupported,
     listening,
-    interim,
     error: micError,
     start: startMic,
     stop: stopMic,
@@ -212,24 +261,33 @@ export default function VivaRoomPage() {
   }
 
   if (!session && !error) return <PageLoading label="Entering the viva room…" />;
-  if (!session) return <ErrorBanner tone="red" message={error!.message} />;
+  if (!session) {
+    return (
+      <div className="mx-auto max-w-[880px] px-5 py-11">
+        <ErrorBanner tone="red" message={error!.message} />
+      </div>
+    );
+  }
 
   const live = liveText !== null ? splitSpeaker(liveText) : null;
   const existingReport = reports.find((r) => r.type === "viva_assessment");
   const canSpeak = session.status === "active" && !concluded && !assessing;
+  const panel = panelFor(session.stage_id);
 
   return (
-    <div className="flex h-[calc(100vh-6rem)] flex-col md:h-[calc(100vh-8rem)]">
-      <header className="mb-4 flex flex-wrap items-center gap-3">
-        <Link href="/sessions" className="text-sm text-ink-faint hover:text-oxford">
-          ← Sessions
-        </Link>
-        <h1 className="font-display text-xl text-oxford">{sessionTitle(session.stage_id)}</h1>
-        <ProviderBadge provider={session.provider} />
-        <SessionStatusChip status={session.status} />
-        <span className="ml-auto flex items-center gap-2">
-          <Button
-            variant="ghost"
+    <div
+      className="mx-auto flex max-w-[880px] flex-col px-5 pb-9 pt-7 md:px-9"
+      style={{ height: "calc(100vh - 64px)", boxSizing: "border-box" }}
+    >
+      {/* Panel bench */}
+      <div className="flex flex-wrap items-center gap-3.5 pb-5">
+        <div className="flex flex-wrap gap-2.5">
+          {panel.map((p) => (
+            <BenchChip key={p.id} name={p.name} role={p.role} />
+          ))}
+        </div>
+        <div className="ml-auto flex items-center gap-2.5">
+          <button
             onClick={() => {
               setReadAloud((v) => {
                 if (v) cancelSpeech();
@@ -237,37 +295,54 @@ export default function VivaRoomPage() {
               });
             }}
             title="Read the panel's questions aloud"
+            className="flex items-center gap-1.5 rounded-full px-4 py-2 text-[12.5px] font-medium transition-colors"
+            style={{
+              border: "1px solid rgba(255,255,255,0.15)",
+              background: readAloud ? "rgba(240,217,160,0.14)" : "transparent",
+              color: readAloud ? "#f0d9a0" : "rgba(245,242,234,0.7)",
+            }}
           >
-            {readAloud ? "🔊 Read aloud" : "🔇 Read aloud"}
-          </Button>
+            <svg viewBox="0 0 16 16" fill="none" className="h-3 w-3">
+              <path d="M2.5 6v4h2.8L9 13V3L5.3 6H2.5Z" stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round" />
+              <path d="M11.5 5.5a3.5 3.5 0 0 1 0 5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+            </svg>
+            Read aloud {readAloud ? "on" : "off"}
+          </button>
           {existingReport ? (
             <Link
               href={`/reports/${existingReport.id}`}
-              className="text-sm font-medium text-oxford hover:underline"
+              className="rounded-full px-4.5 py-2 text-[12.5px] font-medium"
+              style={{ border: "1px solid rgba(240,217,160,0.35)", color: "#f0d9a0" }}
             >
               View assessment →
             </Link>
           ) : (
-            <Button
-              variant="secondary"
+            <button
               onClick={endAndAssess}
               disabled={assessing || streaming || entries.length === 0}
+              className="flex items-center gap-2 rounded-full px-4.5 py-2 text-[12.5px] font-medium transition-colors disabled:opacity-50"
+              style={{ border: "1px solid rgba(240,217,160,0.35)", color: "#f0d9a0" }}
             >
-              {assessing ? <Spinner /> : null}
+              {assessing ? <Spinner className="h-3.5 w-3.5" /> : null}
               {assessing ? "The panel is deliberating…" : "End viva & get assessment"}
-            </Button>
+            </button>
           )}
-        </span>
-      </header>
+        </div>
+      </div>
 
+      {/* Transcript */}
       <div
         ref={scrollRef}
-        className="flex-1 overflow-y-auto rounded-xl border border-line bg-oxford-faint/60 p-4 md:p-6"
+        className="flex-1 overflow-y-auto rounded-[18px] p-7"
+        style={{ border: "1px solid rgba(255,255,255,0.08)", background: "rgba(255,255,255,0.025)" }}
       >
-        <div className="mx-auto flex max-w-3xl flex-col gap-4">
+        <div className="mx-auto flex max-w-[640px] flex-col gap-5">
+          <p className="text-center text-[11px] uppercase tracking-[0.18em]" style={{ color: "rgba(245,242,234,0.35)" }}>
+            {sessionTitle(session.stage_id)} · the panel has read your report
+          </p>
           {entries.length === 0 && streaming && !live ? (
-            <div className="flex items-center gap-2 self-start text-sm text-ink-faint">
-              <Spinner className="h-4 w-4 text-oxford" /> The panel is settling in…
+            <div className="flex items-center gap-2 self-start text-sm" style={{ color: "rgba(245,242,234,0.5)" }}>
+              <Spinner className="h-4 w-4" /> The panel is settling in…
             </div>
           ) : null}
           {entries.map((e) =>
@@ -278,15 +353,21 @@ export default function VivaRoomPage() {
             ),
           )}
           {live !== null ? (
-            <PanelBubble
-              speaker={live.speaker}
-              text={live.text + (streaming ? " ▍" : "")}
-            />
+            <PanelBubble speaker={live.speaker} text={live.text} streaming={streaming} />
           ) : null}
           {concluded ? (
-            <div className="my-2 rounded-lg border border-oxford/20 bg-white px-4 py-3 text-center text-sm text-oxford">
-              The panel has concluded the viva.
-              {!existingReport ? " Request your assessment above." : ""}
+            <div
+              className="mx-auto mt-2 rounded-xl px-6 py-3.5 text-center"
+              style={{ border: "1px solid rgba(240,217,160,0.3)" }}
+            >
+              <p className="font-display text-[16px] italic" style={{ color: "#f0d9a0" }}>
+                The panel has concluded the viva.
+              </p>
+              {!existingReport ? (
+                <p className="mt-1 text-xs" style={{ color: "rgba(245,242,234,0.5)" }}>
+                  Request your assessment above.
+                </p>
+              ) : null}
             </div>
           ) : null}
         </div>
@@ -297,42 +378,58 @@ export default function VivaRoomPage() {
           <ErrorBanner message={error.message} hint={error.hint} />
         </div>
       ) : null}
-
       {micError ? (
         <div className="mt-3">
           <ErrorBanner message={micError} />
         </div>
       ) : null}
 
-      <div className="mt-3">
-        <div className="flex items-end gap-2">
-          <textarea
-            value={
-              listening && interim ? `${input}${input ? " " : ""}${interim}` : input
-            }
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && !e.shiftKey) {
-                e.preventDefault();
-                void send();
+      {/* Composer */}
+      <div className="mt-4">
+        <div
+          className="flex items-end gap-2.5 rounded-2xl py-1.5 pl-5 pr-1.5"
+          style={{
+            border: `1px solid ${listening ? "rgba(226,96,79,0.5)" : "rgba(255,255,255,0.12)"}`,
+            background: "rgba(255,255,255,0.06)",
+          }}
+        >
+          {listening ? (
+            <div className="flex flex-1 items-center gap-3.5 py-[15px]">
+              <span className="flex h-[22px] items-center gap-[3px]">
+                {[0, 0.15, 0.3, 0.45, 0.6].map((d) => (
+                  <span
+                    key={d}
+                    className="h-[22px] w-[3px] rounded"
+                    style={{ background: "#e2604f", animation: `wave 0.9s ${d}s ease-in-out infinite` }}
+                  />
+                ))}
+              </span>
+              <span className="text-[13.5px]" style={{ color: "rgba(245,242,234,0.75)" }}>
+                Listening — speak your answer. Pauses are fine; the mic stays open.
+              </span>
+            </div>
+          ) : (
+            <textarea
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !e.shiftKey) {
+                  e.preventDefault();
+                  void send();
+                }
+              }}
+              rows={2}
+              disabled={!canSpeak || streaming}
+              placeholder={
+                canSpeak
+                  ? "Answer the panel — type, or press the mic and speak. (Enter to send)"
+                  : "This viva has ended."
               }
-            }}
-            rows={3}
-            readOnly={listening}
-            disabled={!canSpeak || streaming}
-            placeholder={
-              canSpeak
-                ? listening
-                  ? "Listening — speak your answer…"
-                  : "Answer the panel — type, or press the mic and speak. (Enter to send)"
-                : "This viva has ended."
-            }
-            className={`flex-1 resize-none rounded-xl border bg-white px-4 py-3 text-sm leading-relaxed text-ink focus:border-oxford focus:outline-none disabled:opacity-60 ${
-              listening ? "border-red-300 ring-1 ring-red-200" : "border-line"
-            }`}
-          />
-          <Button
-            variant={listening ? "danger" : "secondary"}
+              className="flex-1 resize-none border-none bg-transparent py-3.5 text-sm leading-relaxed outline-none disabled:opacity-60"
+              style={{ color: "#f5f2ea" }}
+            />
+          )}
+          <button
             onClick={listening ? stopMic : startMic}
             disabled={!canSpeak || streaming || !micSupported}
             title={
@@ -342,32 +439,45 @@ export default function VivaRoomPage() {
                   : "Record a voice answer"
                 : "Voice input needs Chrome or Safari"
             }
+            className="flex h-11 w-11 flex-none items-center justify-center rounded-xl transition-colors disabled:opacity-40"
+            style={{
+              border: `1px solid ${listening ? "#e2604f" : "rgba(255,255,255,0.15)"}`,
+              background: listening ? "rgba(226,96,79,0.15)" : "transparent",
+              color: listening ? "#e2604f" : "rgba(245,242,234,0.75)",
+            }}
           >
             {listening ? (
-              <>
-                <span className="h-2 w-2 animate-pulse rounded-full bg-red-500" />
-                Stop
-              </>
+              <span className="h-2.5 w-2.5 animate-pulse rounded-full" style={{ background: "#e2604f" }} />
+            ) : (
+              <svg viewBox="0 0 20 20" fill="none" className="h-[17px] w-[17px]" aria-hidden="true">
+                <rect x="7" y="2.5" width="6" height="10" rx="3" stroke="currentColor" strokeWidth="1.5" />
+                <path d="M4.5 9.5a5.5 5.5 0 0 0 11 0M10 15v2.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+              </svg>
+            )}
+          </button>
+          <button
+            onClick={send}
+            disabled={!canSpeak || streaming || input.trim() === ""}
+            className="flex h-11 flex-none items-center gap-2 rounded-xl px-5.5 text-[13.5px] font-semibold text-white transition-colors disabled:opacity-50"
+            style={{ background: "#2953c4", boxShadow: "0 10px 24px -12px rgba(41,83,196,0.8)" }}
+          >
+            {streaming ? (
+              <Spinner className="h-4 w-4" />
             ) : (
               <>
-                <svg viewBox="0 0 20 20" fill="none" className="h-4 w-4" aria-hidden="true">
-                  <rect x="7" y="2.5" width="6" height="10" rx="3" stroke="currentColor" strokeWidth="1.5" />
-                  <path d="M4.5 9.5a5.5 5.5 0 0 0 11 0M10 15v2.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+                Send
+                <svg viewBox="0 0 16 16" fill="none" className="h-3 w-3">
+                  <path d="M2 8h11M9.5 4.5 13 8l-3.5 3.5" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" />
                 </svg>
-                Speak
               </>
             )}
-          </Button>
-          <Button onClick={send} disabled={!canSpeak || streaming || input.trim() === ""}>
-            {streaming ? <Spinner /> : "Send"}
-          </Button>
+          </button>
         </div>
-        {listening ? (
-          <p className="mt-1.5 text-xs text-ink-faint">
-            Recording — press <span className="font-medium text-ink-soft">Stop</span> to
-            review your answer, then Send. Pausing briefly is fine; the mic stays open.
-          </p>
-        ) : null}
+        <p className="mt-2 px-1 text-[11.5px]" style={{ color: "rgba(245,242,234,0.35)" }}>
+          {listening
+            ? "Press the mic to stop, review your answer, then Send."
+            : "Your answers stay in this session. Enter to send · Shift+Enter for a new line."}
+        </p>
       </div>
     </div>
   );

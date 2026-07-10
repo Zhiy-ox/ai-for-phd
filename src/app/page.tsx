@@ -3,22 +3,13 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { getSessionStyle, type ProgrammeTemplate, type StageTemplate } from "@/lib/template";
-import type { StageInstance } from "@/lib/db/repos/stage-instances";
+import type { StageInstance, StageStatus } from "@/lib/db/repos/stage-instances";
 import type { DocumentSummary } from "@/lib/db/repos/documents";
 import type { SessionRow } from "@/lib/db/repos/sessions";
 import type { ReportRow } from "@/lib/db/repos/reports";
 import type { AppSettings } from "@/lib/db/repos/settings";
-import { apiGet, apiSend, formatDate, formatDateTime, messageOf } from "@/components/api";
-import { KindBadge, ProviderBadge, StageStatusChip } from "@/components/status-chip";
-import {
-  Button,
-  Card,
-  Chip,
-  ErrorBanner,
-  PageLoading,
-  SectionLabel,
-  Spinner,
-} from "@/components/ui";
+import { apiGet, apiSend, formatDate, messageOf } from "@/components/api";
+import { ErrorBanner, PageLoading } from "@/components/ui";
 
 interface ProgrammeResponse {
   programme: ProgrammeTemplate;
@@ -26,9 +17,23 @@ interface ProgrammeResponse {
 }
 
 interface StageInfo {
+  stageId: string;
   docs: DocumentSummary[];
   sessions: SessionRow[];
   reports: ReportRow[];
+}
+
+const ROMAN = ["I", "II", "III", "IV", "V", "VI", "VII", "VIII"];
+
+// The numbered gates — everything except the recurring Papers & Rebuttals.
+function gateStages(programme: ProgrammeTemplate): StageTemplate[] {
+  return [...programme.stages]
+    .sort((a, b) => a.ordinal - b.ordinal)
+    .filter((s) => s.gate.type !== "recurring");
+}
+
+function papersStage(programme: ProgrammeTemplate): StageTemplate | undefined {
+  return programme.stages.find((s) => s.gate.type === "recurring");
 }
 
 function pickCurrentStageId(
@@ -36,27 +41,27 @@ function pickCurrentStageId(
   instances: StageInstance[],
   settings: AppSettings | null,
 ): string {
-  const stages = [...programme.stages].sort((a, b) => a.ordinal - b.ordinal);
-  if (settings?.current_stage && stages.some((s) => s.id === settings.current_stage)) {
+  const gates = gateStages(programme);
+  if (settings?.current_stage && gates.some((s) => s.id === settings.current_stage)) {
     return settings.current_stage;
   }
   const byStage = new Map(instances.map((i) => [i.stage_id, i]));
-  const active = stages.find(
-    (s) => byStage.get(s.id)?.status === "active" && s.gate.type !== "recurring",
-  );
-  return (active ?? stages.find((s) => byStage.get(s.id)?.status === "active") ?? stages[0]).id;
+  const active = gates.find((s) => byStage.get(s.id)?.status === "active");
+  return (active ?? gates[0]).id;
 }
 
-// The single most useful thing to do next in this stage.
-function nextStep(
-  stage: StageTemplate,
-  info: StageInfo,
-): { text: string; href: string; cta: string } {
+interface NextMove {
+  text: string;
+  href: string;
+  cta: string;
+}
+
+function nextMove(stage: StageTemplate, info: StageInfo | null): NextMove {
   const style = getSessionStyle(stage);
+  if (!info) return { text: "Loading your stage…", href: `/stages/${stage.id}`, cta: "Enter stage" };
   const readable = info.docs.filter((d) => d.has_text);
   const live = info.sessions.find((s) => s.status === "active");
   const primaryDoc = stage.requiredDocuments[0]?.title.toLowerCase() ?? "document";
-
   if (live) {
     return {
       text: `A ${style.label.toLowerCase()} is in progress — the panel is waiting for you.`,
@@ -66,7 +71,7 @@ function nextStep(
   }
   if (readable.length === 0) {
     return {
-      text: `Start by uploading your ${primaryDoc} — the AI reads it in full before any feedback or interview.`,
+      text: `Upload your ${primaryDoc} — the AI reads it in full before any feedback or interview.`,
       href: `/stages/${stage.id}?tab=documents`,
       cta: "Upload document",
     };
@@ -92,238 +97,446 @@ function nextStep(
   };
 }
 
+const STATUS_LABEL: Record<StageStatus, string> = {
+  passed: "Complete",
+  active: "In progress",
+  upcoming: "Upcoming",
+  locked: "Locked",
+  referred: "Referred",
+};
+const STATUS_COLOR: Record<StageStatus, string> = {
+  passed: "#2eb87a",
+  active: "#2953c4",
+  upcoming: "#98a1ab",
+  locked: "#b3bac2",
+  referred: "#a8843c",
+};
+
 /* ------------------------------------------------------------------ */
-/* Current stage focus panel                                           */
+/* Milestone rail                                                      */
 /* ------------------------------------------------------------------ */
 
-function CurrentStagePanel({
+function MilestoneRail({
+  gates,
+  byStage,
+  currentId,
+  onSetCurrent,
+}: {
+  gates: StageTemplate[];
+  byStage: Map<string, StageInstance>;
+  currentId: string;
+  onSetCurrent: (id: string) => void;
+}) {
+  const currentIdx = Math.max(0, gates.findIndex((s) => s.id === currentId));
+  const fill = gates.length > 1 ? (currentIdx / (gates.length - 1)) * 100 : 0;
+  return (
+    <div className="mt-12">
+      <div className="relative h-0.5 rounded-full" style={{ background: "#e5e0d2" }}>
+        <div
+          className="absolute inset-y-0 left-0 rounded-full transition-all duration-700"
+          style={{ width: `${fill}%`, background: "linear-gradient(90deg,#a8843c,#2953c4)" }}
+        />
+        <span
+          className="absolute top-1/2 h-2 w-2 -translate-x-1/2 -translate-y-1/2 rounded-full transition-all duration-700"
+          style={{ left: `${fill}%`, background: "#2953c4", boxShadow: "0 0 0 4px rgba(41,83,196,0.15)" }}
+        />
+      </div>
+      <div className="mt-[-9px] grid" style={{ gridTemplateColumns: `repeat(${gates.length},1fr)` }}>
+        {gates.map((stage, i) => {
+          const status = byStage.get(stage.id)?.status ?? "upcoming";
+          const isCurrent = stage.id === currentId;
+          const done = status === "passed";
+          return (
+            <div key={stage.id} className="flex flex-col items-start gap-2.5">
+              <span
+                className="flex h-4 w-4 items-center justify-center rounded-full border-2 box-border"
+                style={{
+                  borderColor: done ? "#2eb87a" : isCurrent ? "#2953c4" : "#d8d2c2",
+                  background: done ? "#2eb87a" : isCurrent ? "#fffdf8" : "#f5f2ea",
+                }}
+              >
+                {done ? (
+                  <svg viewBox="0 0 10 10" className="h-2 w-2">
+                    <path d="M2 5.2 4.2 7.4 8 3" stroke="#fff" strokeWidth="1.8" fill="none" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
+                ) : isCurrent ? (
+                  <span className="h-1 w-1 rounded-full" style={{ background: "#2953c4" }} />
+                ) : null}
+              </span>
+              <button
+                onClick={() => onSetCurrent(stage.id)}
+                title="Set as current stage"
+                className="flex flex-col gap-0.5 pr-3 text-left transition-transform hover:-translate-y-0.5"
+              >
+                <span className="font-display text-xs text-ink-faint">{ROMAN[i]}</span>
+                <span
+                  className="text-[12.5px] leading-tight"
+                  style={{ fontWeight: isCurrent ? 600 : 400, color: isCurrent ? "#16202e" : "#5b6673" }}
+                >
+                  {stage.title}
+                </span>
+                <span className="text-[11px]" style={{ color: "#b3bac2" }}>
+                  {stage.typicalTiming.label}
+                </span>
+              </button>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* Gate-seal hero                                                      */
+/* ------------------------------------------------------------------ */
+
+function HeroCurrentStage({
   stage,
   instance,
+  numeral,
   info,
+  onEditStages,
 }: {
   stage: StageTemplate;
   instance?: StageInstance;
+  numeral: string;
   info: StageInfo | null;
+  onEditStages: () => void;
 }) {
-  const style = getSessionStyle(stage);
+  const move = nextMove(stage, info);
+  const readable = (info?.docs ?? []).filter((d) => d.has_text);
+  const readiness = [
+    { label: "Document uploaded", done: readable.length > 0 },
+    { label: "Feedback in hand", done: (info?.reports.length ?? 0) > 0 },
+    ...(stage.assessment
+      ? [{ label: "Panel faced", done: (info?.sessions.length ?? 0) > 0 }]
+      : []),
+  ];
   return (
-    <Card className="border-oxford/25 p-6 shadow-sm">
-      <SectionLabel>Current stage</SectionLabel>
-      <div className="mt-2 flex flex-wrap items-center gap-2.5">
-        <h2 className="font-display text-2xl text-oxford">{stage.title}</h2>
-        {instance ? <StageStatusChip status={instance.status} /> : null}
-        {stage.gate.formRef ? <Chip tone="brass">{stage.gate.formRef}</Chip> : null}
-        <span className="ml-auto text-xs text-ink-faint">
-          {stage.typicalTiming.label}
-          {instance?.target_date ? ` · target ${formatDate(instance.target_date)}` : ""}
-        </span>
-      </div>
-      <p className="mt-2 max-w-3xl text-sm leading-relaxed text-ink-soft">
-        {stage.description}
-      </p>
+    <section
+      className="mt-11 overflow-hidden rounded-[20px] border"
+      style={{ background: "#fffdf8", borderColor: "#e5e0d2", boxShadow: "0 24px 60px -36px rgba(10,22,38,0.35)" }}
+    >
+      <div className="grid md:grid-cols-[1.55fr_1fr]">
+        <div className="p-8 md:p-10">
+          <div className="flex items-center gap-3">
+            <span className="text-[11px] font-semibold uppercase tracking-[0.2em]" style={{ color: "#a8843c" }}>
+              Now · Gate {numeral}
+            </span>
+            <span
+              className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[11px] font-semibold"
+              style={{ background: "#e8eef9", color: "#2953c4" }}
+            >
+              <span className="h-1.5 w-1.5 animate-pulse rounded-full" style={{ background: "#2953c4" }} />
+              {STATUS_LABEL[instance?.status ?? "active"]}
+            </span>
+            <button
+              onClick={onEditStages}
+              className="ml-auto flex items-center gap-1.5 text-xs text-ink-faint transition-colors hover:text-oxford"
+            >
+              <svg viewBox="0 0 16 16" fill="none" className="h-3 w-3">
+                <path d="M11.5 2.5 13.5 4.5 5 13H3v-2l8.5-8.5Z" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round" />
+              </svg>
+              Edit stages
+            </button>
+          </div>
+          <h2 className="mt-3.5 font-display text-[36px] font-normal leading-tight text-ink">
+            {stage.title}
+          </h2>
+          <p className="mt-3.5 max-w-[480px] text-[14.5px] leading-relaxed text-ink-soft">
+            {stage.description}
+          </p>
 
-      {info === null ? (
-        <div className="mt-5 flex items-center gap-2 text-sm text-ink-faint">
-          <Spinner className="h-4 w-4 text-oxford" /> Loading stage activity…
+          <div className="mt-6 flex items-center gap-4 rounded-2xl px-5 py-4" style={{ background: "#0a1626" }}>
+            <div className="flex-1">
+              <p className="text-[10.5px] font-semibold uppercase tracking-[0.18em]" style={{ color: "rgba(240,217,160,0.8)" }}>
+                Your next move
+              </p>
+              <p className="mt-1.5 font-display text-[17px] leading-snug" style={{ color: "#f5f2ea" }}>
+                {move.text}
+              </p>
+            </div>
+            <Link
+              href={move.href}
+              className="flex flex-none items-center gap-2 rounded-xl px-5 py-3 text-sm font-semibold text-white transition-transform hover:-translate-y-0.5"
+              style={{ background: "#2953c4", boxShadow: "0 10px 24px -10px rgba(41,83,196,0.7)" }}
+            >
+              {move.cta}
+              <svg viewBox="0 0 16 16" fill="none" className="h-3.5 w-3.5">
+                <path d="M2.5 8h10.5M9.5 4.5 13 8l-3.5 3.5" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            </Link>
+          </div>
+
+          <div className="mt-5 flex flex-wrap gap-5">
+            {readiness.map((r) => (
+              <div key={r.label} className="flex items-center gap-2 text-[13px]" style={{ color: r.done ? "#2eb87a" : "#98a1ab" }}>
+                <span
+                  className="flex h-[18px] w-[18px] items-center justify-center rounded-full border-[1.5px] box-border"
+                  style={{ borderColor: r.done ? "#2eb87a" : "#d8d2c2", background: r.done ? "#2eb87a" : "transparent" }}
+                >
+                  {r.done ? (
+                    <svg viewBox="0 0 10 10" className="h-[9px] w-[9px]">
+                      <path d="M2 5.2 4.2 7.4 8 3" stroke="#fff" strokeWidth="1.8" fill="none" strokeLinecap="round" strokeLinejoin="round" />
+                    </svg>
+                  ) : null}
+                </span>
+                {r.label}
+              </div>
+            ))}
+          </div>
         </div>
-      ) : (
-        <>
-          <div className="mt-5 rounded-lg bg-oxford-faint px-4 py-3">
-            <p className="text-sm text-ink">
-              <span className="font-medium text-oxford">Next: </span>
-              {nextStep(stage, info).text}
+
+        {/* Gate seal */}
+        <div
+          className="relative flex flex-col items-center justify-center gap-4.5 border-l p-9"
+          style={{ borderColor: "#eee9db", background: "linear-gradient(180deg,#faf7ef,#f3efe3)" }}
+        >
+          <div
+            className="relative flex h-[118px] w-[118px] items-center justify-center rounded-full"
+            style={{ border: "1.5px solid rgba(168,132,60,0.55)" }}
+          >
+            <div
+              className="absolute inset-[7px] rounded-full"
+              style={{ border: "1px dashed rgba(168,132,60,0.5)", animation: "spin 60s linear infinite" }}
+            />
+            <div className="text-center">
+              <p className="font-display text-[22px]" style={{ color: "#a8843c" }}>
+                {stage.gate.formRef ?? "—"}
+              </p>
+              <p className="mt-0.5 text-[9px] uppercase tracking-[0.2em]" style={{ color: "#b39355" }}>
+                {stage.gate.formRef ? "Gate form" : "No form"}
+              </p>
+            </div>
+          </div>
+          <div className="mt-2 text-center">
+            <p className="text-xs text-ink-faint">Target date</p>
+            <p className="mt-0.5 font-display text-[19px] text-ink">
+              {instance?.target_date ? formatDate(instance.target_date) : "Not set"}
             </p>
           </div>
-
-          <div className="mt-5 grid gap-4 md:grid-cols-3">
-            <div>
-              <SectionLabel>Documents ({info.docs.length})</SectionLabel>
-              {info.docs.length === 0 ? (
-                <p className="mt-2 text-sm text-ink-faint">None yet.</p>
-              ) : (
-                <ul className="mt-2 space-y-1.5">
-                  {info.docs.slice(0, 3).map((d) => (
-                    <li key={d.id} className="flex items-center gap-2 text-sm">
-                      <Link
-                        href={`/documents/${d.id}`}
-                        className="truncate text-oxford hover:underline"
-                      >
-                        {d.filename}
-                      </Link>
-                      <KindBadge kind={d.kind} />
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </div>
-            <div>
-              <SectionLabel>Sessions ({info.sessions.length})</SectionLabel>
-              {info.sessions.length === 0 ? (
-                <p className="mt-2 text-sm text-ink-faint">None yet.</p>
-              ) : (
-                <ul className="mt-2 space-y-1.5">
-                  {info.sessions.slice(0, 3).map((s) => (
-                    <li key={s.id} className="flex items-center gap-2 text-sm">
-                      <Link href={`/sessions/${s.id}`} className="text-oxford hover:underline">
-                        {formatDateTime(s.created_at)}
-                      </Link>
-                      <ProviderBadge provider={s.provider} />
-                      {s.status === "active" ? <Chip tone="green">live</Chip> : null}
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </div>
-            <div>
-              <SectionLabel>Reports ({info.reports.length})</SectionLabel>
-              {info.reports.length === 0 ? (
-                <p className="mt-2 text-sm text-ink-faint">None yet.</p>
-              ) : (
-                <ul className="mt-2 space-y-1.5">
-                  {info.reports.slice(0, 3).map((r) => (
-                    <li key={r.id} className="flex items-center gap-2 text-sm">
-                      <Link href={`/reports/${r.id}`} className="text-oxford hover:underline">
-                        {r.type === "viva_assessment" ? "Assessment" : "Review"}
-                      </Link>
-                      {r.verdict ? <Chip tone="brass">{r.verdict}</Chip> : null}
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </div>
-          </div>
-
-          <div className="mt-6 flex flex-wrap items-center gap-2">
-            <Link href={nextStep(stage, info).href}>
-              <Button>{nextStep(stage, info).cta}</Button>
-            </Link>
-            <Link href={`/stages/${stage.id}`}>
-              <Button variant="secondary">Enter stage</Button>
-            </Link>
-            {stage.assessment ? (
-              <Link href={`/stages/${stage.id}?tab=viva`}>
-                <Button variant="ghost">{style.label} →</Button>
-              </Link>
-            ) : null}
-          </div>
-        </>
-      )}
-    </Card>
-  );
-}
-
-/* ------------------------------------------------------------------ */
-/* "Where am I?" panel                                                 */
-/* ------------------------------------------------------------------ */
-
-function WhereAmIPanel({
-  stages,
-  currentStageId,
-  onApplied,
-}: {
-  stages: StageTemplate[];
-  currentStageId: string;
-  onApplied: (stageId: string, instances: StageInstance[]) => void;
-}) {
-  const [value, setValue] = useState(currentStageId);
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  async function apply() {
-    setSaving(true);
-    setError(null);
-    try {
-      const { instances } = await apiSend<{ instances: StageInstance[] }>(
-        "/api/programme/current-stage",
-        "POST",
-        { stageId: value },
-      );
-      onApplied(value, instances);
-    } catch (err) {
-      setError(messageOf(err));
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  return (
-    <Card className="p-5">
-      <SectionLabel>Where are you in the DPhil?</SectionLabel>
-      <div className="mt-3 flex flex-wrap items-center gap-2">
-        <select
-          value={value}
-          onChange={(e) => setValue(e.target.value)}
-          className="rounded-lg border border-line bg-white px-3 py-2 text-sm text-ink focus:border-oxford focus:outline-none"
-        >
-          {stages.map((s) => (
-            <option key={s.id} value={s.id}>
-              {s.title}
-            </option>
-          ))}
-        </select>
-        <Button variant="secondary" onClick={apply} disabled={saving || value === currentStageId}>
-          {saving ? <Spinner /> : null} Set current stage
-        </Button>
+        </div>
       </div>
-      <p className="mt-2 text-xs leading-relaxed text-ink-faint">
-        Earlier stages are marked passed, later ones upcoming (Papers &amp; Rebuttals stays
-        active once reached). You can fine-tune any stage&apos;s status on its own page.
-      </p>
-      {error ? <p className="mt-2 text-sm text-red-700">{error}</p> : null}
-    </Card>
+    </section>
   );
 }
 
 /* ------------------------------------------------------------------ */
-/* Compact journey                                                     */
+/* Onboarding / stage-picker modal                                     */
 /* ------------------------------------------------------------------ */
 
-function JourneyRow({
+function OnboardingModal({
+  programme,
+  byStage,
+  currentId,
+  onSetCurrent,
+  onClose,
+}: {
+  programme: ProgrammeTemplate;
+  byStage: Map<string, StageInstance>;
+  currentId: string;
+  onSetCurrent: (id: string) => Promise<void> | void;
+  onClose: () => void;
+}) {
+  const gates = gateStages(programme);
+  const papers = papersStage(programme);
+  return (
+    <div
+      className="fixed inset-0 z-[100] flex items-center justify-center p-6"
+      style={{ background: "rgba(10,22,38,0.55)", backdropFilter: "blur(6px)" }}
+      onClick={onClose}
+    >
+      <div
+        className="max-h-[86vh] w-full max-w-[580px] overflow-y-auto rounded-[22px] border p-9"
+        style={{ background: "#fffdf8", borderColor: "#e5e0d2", boxShadow: "0 40px 100px -30px rgba(10,22,38,0.5)" }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-ink-faint">
+          Set up once, change anytime
+        </p>
+        <h2 className="mt-2.5 font-display text-[27px] font-normal text-ink">
+          Where are you in the DPhil?
+        </h2>
+        <p className="mt-2.5 text-[13.5px] leading-relaxed text-ink-soft">
+          Choose the stage you&apos;re working on now. Earlier stages are marked complete, later
+          ones upcoming — nothing here has to happen in order, and you can revisit this any time.
+        </p>
+
+        <div className="mt-5 flex flex-col gap-2">
+          {gates.map((stage) => {
+            const status = byStage.get(stage.id)?.status ?? "upcoming";
+            const isCurrent = stage.id === currentId;
+            return (
+              <button
+                key={stage.id}
+                onClick={() => onSetCurrent(stage.id)}
+                className="flex items-center gap-3.5 rounded-xl border-[1.5px] px-4 py-3 text-left transition-colors"
+                style={{
+                  borderColor: isCurrent ? "#2953c4" : "#e5e0d2",
+                  background: isCurrent ? "#e8eef9" : "#fff",
+                }}
+              >
+                <span
+                  className="flex h-[22px] w-[22px] flex-none items-center justify-center rounded-full border-[1.5px] box-border"
+                  style={{
+                    borderColor: status === "passed" ? "#2eb87a" : "#d8d2c2",
+                    background: status === "passed" ? "#2eb87a" : "transparent",
+                  }}
+                >
+                  {status === "passed" ? (
+                    <svg viewBox="0 0 10 10" className="h-[9px] w-[9px]">
+                      <path d="M2 5.2 4.2 7.4 8 3" stroke="#fff" strokeWidth="1.8" fill="none" strokeLinecap="round" strokeLinejoin="round" />
+                    </svg>
+                  ) : null}
+                </span>
+                <span className="flex-1">
+                  <span className="block text-sm text-ink" style={{ fontWeight: isCurrent ? 600 : 400 }}>
+                    {stage.title}
+                  </span>
+                  <span className="block text-[11.5px] text-ink-faint">{stage.typicalTiming.label}</span>
+                </span>
+                {isCurrent ? (
+                  <span
+                    className="flex-none rounded-full px-2.5 py-0.5 text-[10.5px] font-semibold text-white"
+                    style={{ background: "#2953c4" }}
+                  >
+                    You are here
+                  </span>
+                ) : null}
+              </button>
+            );
+          })}
+        </div>
+
+        {papers ? (
+          <div className="mt-4.5 border-t pt-4.5" style={{ borderColor: "#eee9db" }}>
+            <div
+              className="flex items-center gap-3.5 rounded-xl border-[1.5px] border-dashed px-4 py-3"
+              style={{ borderColor: "rgba(168,132,60,0.45)", background: "#faf7ef" }}
+            >
+              <span className="flex h-[22px] w-[22px] flex-none items-center justify-center rounded-full" style={{ background: "#0a1626" }}>
+                <svg viewBox="0 0 24 24" fill="none" className="h-3 w-3">
+                  <path d="M7 8.5a3.5 3.5 0 0 0 0 7c2 0 3.3-1.7 5-4.5s3-4.5 5-4.5a3.5 3.5 0 0 1 0 7c-2 0-3.3-1.7-5-4.5" stroke="#f0d9a0" strokeWidth="1.6" strokeLinecap="round" />
+                </svg>
+              </span>
+              <span className="flex-1">
+                <span className="block text-sm font-medium text-ink">{papers.title}</span>
+                <span className="block text-[11.5px] text-ink-faint">
+                  Ongoing — runs alongside everything else, not a step in this list
+                </span>
+              </span>
+            </div>
+          </div>
+        ) : null}
+
+        <div className="mt-6 flex items-center justify-end gap-4">
+          <button onClick={onClose} className="text-[13px] text-ink-faint transition-colors hover:text-ink">
+            Done
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* Papers card + milestone grid                                        */
+/* ------------------------------------------------------------------ */
+
+function PapersCard({ stage }: { stage: StageTemplate }) {
+  return (
+    <section
+      className="mt-7 rounded-[18px] border-[1.5px] border-dashed px-7 py-6"
+      style={{ borderColor: "rgba(168,132,60,0.5)", background: "#faf7ef" }}
+    >
+      <div className="flex flex-wrap items-start gap-5">
+        <div className="flex h-[46px] w-[46px] flex-none items-center justify-center rounded-full" style={{ background: "#0a1626" }}>
+          <svg viewBox="0 0 24 24" fill="none" className="h-[22px] w-[22px]">
+            <path d="M7 8.5a3.5 3.5 0 0 0 0 7c2 0 3.3-1.7 5-4.5s3-4.5 5-4.5a3.5 3.5 0 0 1 0 7c-2 0-3.3-1.7-5-4.5" stroke="#f0d9a0" strokeWidth="1.5" strokeLinecap="round" />
+          </svg>
+        </div>
+        <div className="min-w-[260px] flex-1">
+          <div className="flex flex-wrap items-center gap-2.5">
+            <p className="font-display text-[19px] text-ink">{stage.title}</p>
+            <span
+              className="whitespace-nowrap rounded-full px-2.5 py-0.5 text-[10.5px] font-semibold"
+              style={{ background: "#eee9db", color: "#8b7635" }}
+            >
+              Ongoing · not a gate
+            </span>
+          </div>
+          <p className="mt-2 max-w-[600px] text-[13px] leading-relaxed text-ink-soft">
+            {stage.description}
+          </p>
+        </div>
+        <Link
+          href={`/stages/${stage.id}`}
+          className="flex flex-none items-center gap-2 self-center rounded-xl px-5 py-3 text-[13.5px] font-semibold transition-colors"
+          style={{ background: "#16202e", color: "#f5f2ea" }}
+        >
+          Open {stage.title}
+          <svg viewBox="0 0 16 16" fill="none" className="h-3 w-3">
+            <path d="M2.5 8h10.5M9.5 4.5 13 8l-3.5 3.5" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+        </Link>
+      </div>
+    </section>
+  );
+}
+
+function MilestoneCard({
   stage,
-  instance,
+  numeral,
+  status,
   isCurrent,
-  isLast,
+  onSetCurrent,
 }: {
   stage: StageTemplate;
-  instance?: StageInstance;
+  numeral: string;
+  status: StageStatus;
   isCurrent: boolean;
-  isLast: boolean;
+  onSetCurrent: () => void;
 }) {
-  const status = instance?.status ?? "upcoming";
   return (
-    <li className="relative pl-9">
-      {!isLast ? (
-        <span aria-hidden className="absolute left-[11px] top-7 h-full w-px bg-line" />
-      ) : null}
-      <span
-        aria-hidden
-        className={`absolute left-1 top-4 flex h-3.5 w-3.5 items-center justify-center rounded-full border-2 ${
-          status === "passed"
-            ? "border-emerald-500 bg-emerald-500"
-            : status === "active"
-              ? "border-oxford bg-white"
-              : "border-line bg-paper"
-        }`}
-      >
-        {status === "active" ? <span className="h-1 w-1 rounded-full bg-oxford" /> : null}
-      </span>
-      <Link href={`/stages/${stage.id}`} className="block">
-        <div
-          className={`flex flex-wrap items-center gap-2 rounded-lg border bg-white px-4 py-2.5 transition-colors hover:border-oxford/40 ${
-            isCurrent ? "border-oxford/40" : "border-line"
-          }`}
-        >
-          <span
-            className={`font-display text-sm ${isCurrent ? "text-oxford" : "text-ink-soft"}`}
-          >
-            {stage.title}
-          </span>
-          <StageStatusChip status={status} />
-          {stage.gate.formRef ? <Chip tone="brass">{stage.gate.formRef}</Chip> : null}
-          <span className="ml-auto text-xs text-ink-faint">{stage.typicalTiming.label}</span>
-        </div>
+    <div
+      className="flex flex-col gap-2 rounded-2xl border-[1.5px] p-5 transition-shadow hover:shadow-[0_18px_36px_-24px_rgba(10,22,38,0.4)]"
+      style={{
+        borderColor: isCurrent ? "rgba(41,83,196,0.4)" : "#e5e0d2",
+        background: isCurrent ? "#fffdf8" : "#fffdf8",
+        opacity: status === "upcoming" ? 0.92 : 1,
+      }}
+    >
+      <div className="flex items-center gap-2.5">
+        <span className="font-display text-[15px]" style={{ color: "#a8843c" }}>{numeral}</span>
+        <span className="text-[11px] font-semibold" style={{ color: STATUS_COLOR[status] }}>
+          {STATUS_LABEL[status]}
+        </span>
+        <span className="ml-auto text-[11px]" style={{ color: "#b3bac2" }}>{stage.typicalTiming.label}</span>
+      </div>
+      <Link href={`/stages/${stage.id}`} className="font-display text-[19px] leading-tight text-ink hover:text-oxford">
+        {stage.title}
       </Link>
-    </li>
+      <p className="text-[12.5px] leading-snug" style={{ color: "#8b93a3" }}>
+        {stage.description.length > 96 ? `${stage.description.slice(0, 96)}…` : stage.description}
+      </p>
+      {isCurrent ? (
+        <span className="mt-1 self-start text-[12.5px] font-semibold" style={{ color: "#a8843c" }}>
+          ● You&apos;re working on this now
+        </span>
+      ) : (
+        <button
+          onClick={onSetCurrent}
+          className="mt-1 flex items-center gap-1.5 self-start text-[12.5px] font-semibold transition-all hover:gap-2"
+          style={{ color: "#2953c4" }}
+        >
+          Work on this now
+          <svg viewBox="0 0 16 16" fill="none" className="h-3 w-3">
+            <path d="M2.5 8h10.5M9.5 4.5 13 8l-3.5 3.5" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+        </button>
+      )}
+    </div>
   );
 }
 
@@ -335,8 +548,8 @@ export default function DashboardPage() {
   const [data, setData] = useState<ProgrammeResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [currentStageId, setCurrentStageId] = useState<string | null>(null);
-  // Tagged with the stage it was fetched for; a mismatch renders as loading.
-  const [stageInfo, setStageInfo] = useState<(StageInfo & { stageId: string }) | null>(null);
+  const [stageInfo, setStageInfo] = useState<StageInfo | null>(null);
+  const [onboardingOpen, setOnboardingOpen] = useState(false);
 
   useEffect(() => {
     Promise.all([
@@ -376,9 +589,7 @@ export default function DashboardPage() {
           ),
         });
       } catch {
-        if (!cancelled) {
-          setStageInfo({ stageId: currentStageId, docs: [], sessions: [], reports: [] });
-        }
+        if (!cancelled) setStageInfo({ stageId: currentStageId, docs: [], sessions: [], reports: [] });
       }
     })();
     return () => {
@@ -386,60 +597,91 @@ export default function DashboardPage() {
     };
   }, [currentStageId]);
 
-  if (error) return <ErrorBanner tone="red" message={error} />;
+  async function applyCurrentStage(stageId: string) {
+    if (!data) return;
+    try {
+      const { instances } = await apiSend<{ instances: StageInstance[] }>(
+        "/api/programme/current-stage",
+        "POST",
+        { stageId },
+      );
+      setData({ programme: data.programme, instances });
+      setCurrentStageId(stageId);
+    } catch (e) {
+      setError(messageOf(e));
+    }
+  }
+
+  if (error) return <div className="mx-auto max-w-[880px] px-5 py-12"><ErrorBanner tone="red" message={error} /></div>;
   if (!data || !currentStageId) return <PageLoading label="Loading your programme…" />;
 
   const { programme, instances } = data;
   const byStage = new Map(instances.map((i) => [i.stage_id, i]));
-  const stages = [...programme.stages].sort((a, b) => a.ordinal - b.ordinal);
-  const currentStage = stages.find((s) => s.id === currentStageId) ?? stages[0];
+  const gates = gateStages(programme);
+  const papers = papersStage(programme);
+  const currentStage = gates.find((s) => s.id === currentStageId) ?? gates[0];
+  const currentNumeral = ROMAN[Math.max(0, gates.findIndex((s) => s.id === currentStageId))];
+  const info = stageInfo?.stageId === currentStage.id ? stageInfo : null;
 
   return (
-    <div>
-      <header className="mb-8">
-        <SectionLabel>{programme.name}</SectionLabel>
-        <h1 className="mt-2 font-display text-2xl leading-tight text-oxford md:text-3xl">
-          Your doctorate, rehearsed before it&apos;s real.
-        </h1>
-      </header>
+    <div className="mx-auto max-w-[1140px] px-5 py-12 md:px-9 md:py-13">
+      <p className="text-[11px] font-semibold uppercase tracking-[0.24em]" style={{ color: "#98a1ab" }}>
+        {programme.name} · {currentStage.typicalTiming.label}
+      </p>
+      <h1 className="mt-2.5 max-w-[720px] font-display text-[40px] font-normal leading-[1.08] tracking-tight text-ink md:text-[44px]">
+        Your doctorate,{" "}
+        <em className="italic font-normal" style={{ color: "#2953c4" }}>
+          rehearsed
+        </em>{" "}
+        before it&apos;s real.
+      </h1>
 
-      <div className="space-y-6">
-        <CurrentStagePanel
-          stage={currentStage}
-          instance={byStage.get(currentStage.id)}
-          info={stageInfo?.stageId === currentStage.id ? stageInfo : null}
-        />
+      <MilestoneRail gates={gates} byStage={byStage} currentId={currentStage.id} onSetCurrent={applyCurrentStage} />
 
-        <WhereAmIPanel
-          stages={stages}
-          currentStageId={currentStage.id}
-          onApplied={(stageId, newInstances) => {
-            setData({ programme, instances: newInstances });
-            setCurrentStageId(stageId);
-          }}
-        />
+      <HeroCurrentStage
+        stage={currentStage}
+        instance={byStage.get(currentStage.id)}
+        numeral={currentNumeral}
+        info={info}
+        onEditStages={() => setOnboardingOpen(true)}
+      />
 
-        <div>
-          <SectionLabel>The full journey</SectionLabel>
-          <ol className="mt-3 space-y-2">
-            {stages.map((stage, i) => (
-              <JourneyRow
-                key={stage.id}
-                stage={stage}
-                instance={byStage.get(stage.id)}
-                isCurrent={stage.id === currentStage.id}
-                isLast={i === stages.length - 1}
-              />
-            ))}
-          </ol>
-        </div>
+      {papers ? <PapersCard stage={papers} /> : null}
 
-        {programme.institutionNote ? (
-          <p className="max-w-2xl text-xs leading-relaxed text-ink-faint">
-            {programme.institutionNote}
-          </p>
-        ) : null}
+      <p className="mt-11 text-[11px] font-semibold uppercase tracking-[0.24em]" style={{ color: "#98a1ab" }}>
+        The full journey
+      </p>
+      <p className="mt-1.5 text-[12.5px]" style={{ color: "#98a1ab" }}>
+        Use “Work on this now” to switch your current stage — nothing here has to go in order.
+      </p>
+      <div className="mt-4 grid gap-3.5 md:grid-cols-3">
+        {gates.map((stage, i) => (
+          <MilestoneCard
+            key={stage.id}
+            stage={stage}
+            numeral={ROMAN[i]}
+            status={byStage.get(stage.id)?.status ?? "upcoming"}
+            isCurrent={stage.id === currentStage.id}
+            onSetCurrent={() => applyCurrentStage(stage.id)}
+          />
+        ))}
       </div>
+
+      {programme.institutionNote ? (
+        <p className="mt-10 max-w-[720px] text-xs leading-relaxed" style={{ color: "#98a1ab" }}>
+          {programme.institutionNote}
+        </p>
+      ) : null}
+
+      {onboardingOpen ? (
+        <OnboardingModal
+          programme={programme}
+          byStage={byStage}
+          currentId={currentStage.id}
+          onSetCurrent={(id) => applyCurrentStage(id)}
+          onClose={() => setOnboardingOpen(false)}
+        />
+      ) : null}
     </div>
   );
 }

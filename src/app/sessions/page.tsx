@@ -32,10 +32,10 @@ export default function SessionsPage() {
   if (sessions === null) return <PageLoading label="Loading sessions…" />;
 
   return (
-    <div>
+    <div className="mx-auto max-w-[880px] px-5 py-12 md:px-9">
       <header className="mb-8">
         <SectionLabel>History</SectionLabel>
-        <h1 className="mt-2 font-display text-3xl text-oxford">Sessions</h1>
+        <h1 className="mt-2 font-display text-[34px] font-normal text-ink">Sessions</h1>
       </header>
 
       {sessions.length === 0 ? (

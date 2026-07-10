@@ -87,13 +87,13 @@ export default function DocumentDetailPage() {
   const preview = showAll ? text : text.slice(0, PREVIEW_CHARS);
 
   return (
-    <div>
+    <div className="mx-auto max-w-[1020px] px-5 py-11 md:px-9">
       <Link href="/documents" className="text-sm text-ink-faint hover:text-oxford">
         ← Documents
       </Link>
       <header className="mb-6 mt-3">
         <div className="flex flex-wrap items-center gap-3">
-          <h1 className="break-all font-display text-2xl text-oxford">{doc.filename}</h1>
+          <h1 className="break-all font-display text-[28px] font-normal text-ink">{doc.filename}</h1>
           <KindBadge kind={doc.kind} />
           {doc.extracted_text ? (
             <Chip tone="green">{formatChars(doc.char_count)}</Chip>
