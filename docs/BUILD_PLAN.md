@@ -53,7 +53,7 @@ src/
 │   ├── db/
 │   │   ├── client.ts     # node:sqlite singleton, dataDir/documentsDir/scratchDir
 │   │   ├── migrations.ts # append-only array, PRAGMA user_version (v1 core, v2 findings)
-│   │   └── repos/        # stage-instances, documents, sessions, reports, settings (+ findings: TODO)
+│   │   └── repos/        # stage-instances, documents, sessions, reports, settings, findings
 │   ├── providers/
 │   │   ├── types.ts      # LLMProvider contract: streamTurn/completeOnce/checkAuth, ProviderEvent
 │   │   ├── claude.ts     # @anthropic-ai/claude-agent-sdk adapter (tools disabled, resume, replay fallback)
@@ -62,7 +62,7 @@ src/
 │   │   ├── binaries.ts   # auto-detect claude/codex on PATH + common dirs (env vars override)
 │   │   └── auth-status.ts# `claude auth status` / `codex login status`, 5-min cache
 │   ├── viva/             # engine.ts (session loop), prompts.ts (panel/assessment), planner.ts, report.ts, types.ts
-│   ├── review/           # run.ts + prompts.ts — one-shot rubric doc review (anchored findings)
+│   ├── review/           # one-shot rubric doc review + score-delta history selection
 │   ├── extraction/       # pdf (unpdf), docx (mammoth), plain text
 │   ├── shared/json-extract.ts # completeJsonWithRetry — fenced-JSON + one re-emit retry
 │   └── sse.ts            # AsyncGenerator → text/event-stream Response
@@ -106,18 +106,18 @@ src/
 | Programme presets + wizard | ✅ | oxford-dphil / generic-uk-phd / us-phd; `/welcome` first-run wizard; `settings.programme_id`; Settings programme card |
 | Examiner styles | ✅ | `PanelStyle` (supportive/standard/hostile + focus) → planner & panel prompts; picker in session setup |
 | Open-source release | ✅ | MIT LICENSE, product README, repo public with topics |
-| Tests | ✅ | 64 vitest tests: extraction (fixtures incl. hand-built PDF), provider event mapping, JSON parse/retry, template validation via import |
+| Tests | ✅ | 76 vitest tests: extraction (fixtures incl. hand-built PDF), provider event mapping, JSON parse/retry, template validation, findings, score-delta selection |
 
 ---
 
-## 4. IN FLIGHT — Phase B: Weakness ledger (cross-session memory)
+## 4. SHIPPED — Phase B: Weakness ledger (cross-session memory)
 
 **Goal:** the app remembers your weak spots across sessions. Panels open by
 re-attacking them; good answers resolve them; document re-reviews show score
 deltas. This is the product's moat — prioritize it.
 
-**Status: tasks 1–7 and 9 ✅ shipped by Claude (2026-07-11). Task 8 is the
-only remaining item — ⏳ unclaimed, sized for Codex.**
+**Status: tasks 1–9 ✅ shipped (Claude + Codex, 2026-07-11). Phase B is
+complete.**
 
 ```sql
 findings(id, stage_id, criterion_id, description, evidence,
@@ -150,22 +150,16 @@ findings(id, stage_id, criterion_id, description, evidence,
    (n) — the panel remembers" strip (top 3, dot green when `improving`,
    links to `?tab=reports`); stage Reports tab opens with a **Weakness
    ledger** section (evidence quotes, status chip, Resolve button).
-8. ⏳ **Score deltas** — UNCLAIMED, self-contained UI task
-   (`src/app/reports/[id]/page.tsx`): for a `doc_review` report, find the
-   most recent OLDER `doc_review` report whose `document_id` resolves to a
-   document with the same `(stage_id, kind)` as this report's document
-   (fetch `/api/documents?stageId=…`, `/api/reports?type=doc_review`, and
-   this report's document via `/api/documents/[id]`); parse both
-   `rubric_json` payloads (`DocReviewResult`), build `Map<criterionId,
-   score>` for the previous one, and render a small ▲+n (green #2eb87a) /
-   ▼−n (red) delta chip beside each `ScoreBar` in `DocReviewView` plus a
-   "vs review of <date>" note under the Scorecard label. No schema or API
-   changes. Verify: `npx tsc --noEmit && npx eslint src && npx vitest run
-   && npm run build`.
+8. ✅ **Score deltas** — `src/app/reports/[id]/page.tsx` fetches the current
+   document, stage documents, and review history; compares against the most
+   recent strictly older review of the same `(stage_id, kind)`; and renders
+   accessible green/red score chips plus the prior review date. Selection is
+   isolated in `src/lib/review/score-deltas.ts` and covered by five tests; no
+   schema or API changes.
 9. ✅ **Tests** — `tests/findings.test.ts` (7 tests, temp `DATA_DIR` set
    before importing the db client): dedup, filters, status transitions,
    re-raise after resolution, blank rejection, extended schema parse.
-   Suite total: 71.
+   Suite total after tasks 8–9: 76.
 
 **Notes for the next agent:** migration v2 applies lazily on first DB open —
 no manual step. Findings are keyed to `stage_id` only (not programme), which

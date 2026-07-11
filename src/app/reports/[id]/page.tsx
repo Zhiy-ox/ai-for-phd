@@ -3,11 +3,13 @@
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
+import type { DocumentRow, DocumentSummary } from "@/lib/db/repos/documents";
 import type { ReportRow } from "@/lib/db/repos/reports";
 import type { ProgrammeTemplate } from "@/lib/template";
 import type { VivaAssessment } from "@/lib/viva/types";
 import type { DocReviewResult, DocReviewSection } from "@/lib/review/types";
-import { apiGet, formatDateTime, messageOf } from "@/components/api";
+import { findPreviousDocReview, parseDocReviewResult } from "@/lib/review/score-deltas";
+import { apiGet, formatDate, formatDateTime, messageOf } from "@/components/api";
 import { Markdown } from "@/components/markdown";
 import { Card, Chip, ErrorBanner, PageLoading, SectionLabel } from "@/components/ui";
 
@@ -44,6 +46,29 @@ function ScoreBar({ score }: { score: number }) {
       </div>
       <span className="text-xs tabular-nums text-ink-soft">{clamped}/5</span>
     </div>
+  );
+}
+
+function ScoreDelta({ delta }: { delta: number }) {
+  if (!Number.isFinite(delta)) return null;
+  const increased = delta > 0;
+  const amount = Math.round(Math.abs(delta) * 100) / 100;
+  if (amount === 0) return null;
+  const label = `Score ${increased ? "increased" : "decreased"} by ${amount} ${
+    amount === 1 ? "point" : "points"
+  }`;
+  return (
+    <span
+      title={label}
+      className={`inline-flex items-center whitespace-nowrap rounded-full border px-1.5 py-0.5 text-[10px] font-semibold tabular-nums ${
+        increased
+          ? "border-verdant bg-verdant text-oxford-deep"
+          : "border-red-600 bg-red-600 text-white"
+      }`}
+    >
+      <span aria-hidden="true">{increased ? `▲+${amount}` : `▼−${amount}`}</span>
+      <span className="sr-only">{label}</span>
+    </span>
   );
 }
 
@@ -151,12 +176,67 @@ const SEVERITY_STYLE: Record<DocReviewSection["severity"], string> = {
   minor: "border-line bg-white",
 };
 
+interface ReviewComparison {
+  reportId: string;
+  previousCreatedAt: string;
+  previousScores: Map<string, number>;
+}
+
+async function loadReviewComparison(report: ReportRow): Promise<ReviewComparison | null> {
+  if (report.type !== "doc_review" || !report.document_id) return null;
+  const documentId = report.document_id;
+  if (!parseDocReviewResult(report)) return null;
+
+  const documentAndStageDocuments = (async () => {
+    const { document } = await apiGet<{ document: DocumentRow }>(
+      `/api/documents/${encodeURIComponent(documentId)}`,
+    );
+    const { documents } = await apiGet<{ documents: DocumentSummary[] }>(
+      `/api/documents?stageId=${encodeURIComponent(document.stage_id ?? "")}`,
+    );
+    return { document, documents };
+  })();
+  const [{ document, documents }, { reports }] = await Promise.all([
+    documentAndStageDocuments,
+    apiGet<{ reports: ReportRow[] }>("/api/reports?type=doc_review"),
+  ]);
+  const previousReport = findPreviousDocReview({
+    currentReport: report,
+    currentDocument: document,
+    stageDocuments: documents,
+    reports,
+  });
+  if (!previousReport) return null;
+
+  const previousReview = parseDocReviewResult(previousReport);
+  if (!previousReview) return null;
+  const previousScores = new Map<string, number>();
+  for (const criterion of previousReview.criteria) {
+    if (
+      criterion &&
+      typeof criterion.id === "string" &&
+      typeof criterion.score === "number" &&
+      Number.isFinite(criterion.score)
+    ) {
+      previousScores.set(criterion.id, criterion.score);
+    }
+  }
+  if (previousScores.size === 0) return null;
+  return {
+    reportId: report.id,
+    previousCreatedAt: previousReport.created_at,
+    previousScores,
+  };
+}
+
 function DocReviewView({
   review,
   programme,
+  comparison,
 }: {
   review: DocReviewResult;
   programme: ProgrammeTemplate | null;
+  comparison: ReviewComparison | null;
 }) {
   const titles = useCriterionTitles(programme);
   return (
@@ -168,14 +248,32 @@ function DocReviewView({
 
       <Card className="p-5">
         <SectionLabel>Scorecard</SectionLabel>
+        {comparison ? (
+          <p className="mt-1 text-xs text-ink-soft">
+            vs review of{" "}
+            <time dateTime={comparison.previousCreatedAt}>
+              {formatDate(comparison.previousCreatedAt)}
+            </time>
+          </p>
+        ) : null}
         <div className="mt-3 space-y-2.5">
-          {review.criteria.map((c) => (
-            <div key={c.id} className="grid gap-1 sm:grid-cols-[12rem_8rem_1fr] sm:gap-3">
-              <span className="text-sm font-medium text-ink">{titles.get(c.id) ?? c.id}</span>
-              <ScoreBar score={c.score} />
-              <span className="text-sm leading-relaxed text-ink-soft">{c.comments}</span>
-            </div>
-          ))}
+          {review.criteria.map((c) => {
+            const previousScore = comparison?.previousScores.get(c.id);
+            const delta = previousScore === undefined ? null : c.score - previousScore;
+            return (
+              <div
+                key={c.id}
+                className="grid gap-1 sm:grid-cols-[12rem_11rem_minmax(0,1fr)] sm:gap-3"
+              >
+                <span className="text-sm font-medium text-ink">{titles.get(c.id) ?? c.id}</span>
+                <div className="flex flex-wrap items-center gap-2">
+                  <ScoreBar score={c.score} />
+                  {delta === null ? null : <ScoreDelta delta={delta} />}
+                </div>
+                <span className="text-sm leading-relaxed text-ink-soft">{c.comments}</span>
+              </div>
+            );
+          })}
         </div>
       </Card>
 
@@ -231,6 +329,7 @@ export default function ReportPage() {
   const params = useParams<{ id: string }>();
   const [report, setReport] = useState<ReportRow | null>(null);
   const [programme, setProgramme] = useState<ProgrammeTemplate | null>(null);
+  const [reviewComparison, setReviewComparison] = useState<ReviewComparison | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -242,12 +341,28 @@ export default function ReportPage() {
       .catch(() => {});
   }, [params.id]);
 
+  useEffect(() => {
+    if (!report || report.type !== "doc_review" || !report.document_id) return;
+    let cancelled = false;
+    void loadReviewComparison(report)
+      .then((comparison) => {
+        if (!cancelled) setReviewComparison(comparison);
+      })
+      .catch(() => {
+        if (!cancelled) setReviewComparison(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [report]);
+
   if (error) return <ErrorBanner tone="red" message={error} />;
   if (!report) return <PageLoading label="Opening the report…" />;
 
   const isViva = report.type === "viva_assessment";
   const assessment = isViva ? parseRubric<VivaAssessment>(report) : null;
-  const review = !isViva ? parseRubric<DocReviewResult>(report) : null;
+  const review = !isViva ? parseDocReviewResult(report) : null;
+  const comparison = reviewComparison?.reportId === report.id ? reviewComparison : null;
 
   return (
     <div className="mx-auto max-w-[880px] px-5 py-11 md:px-9">
@@ -269,7 +384,7 @@ export default function ReportPage() {
       {isViva && assessment ? (
         <VivaAssessmentView report={report} assessment={assessment} programme={programme} />
       ) : !isViva && review ? (
-        <DocReviewView review={review} programme={programme} />
+        <DocReviewView review={review} programme={programme} comparison={comparison} />
       ) : (
         <Card className="p-6">
           <Markdown>{report.content_md}</Markdown>
