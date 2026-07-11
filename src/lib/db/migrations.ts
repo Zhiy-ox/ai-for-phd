@@ -64,4 +64,21 @@ export const MIGRATIONS: string[] = [
     value TEXT NOT NULL
   );
   `,
+  // v2 — weakness ledger: weak spots harvested from assessments and reviews,
+  // carried across sessions until resolved.
+  `
+  CREATE TABLE findings (
+    id           TEXT PRIMARY KEY,
+    stage_id     TEXT NOT NULL,
+    criterion_id TEXT,
+    description  TEXT NOT NULL,
+    evidence     TEXT,
+    source_type  TEXT NOT NULL,
+    source_id    TEXT,
+    status       TEXT NOT NULL DEFAULT 'open',
+    created_at   TEXT NOT NULL,
+    updated_at   TEXT NOT NULL
+  );
+  CREATE INDEX idx_findings_stage ON findings(stage_id, status);
+  `,
 ];
