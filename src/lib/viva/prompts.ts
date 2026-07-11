@@ -68,8 +68,10 @@ export function buildPanelSystemPrompt(args: {
   documents: { title: string; text: string }[];
   plan?: QuestionPlan;
   style?: PanelStyle;
+  // Unresolved weaknesses from previous sessions/reviews — the ledger.
+  standingWeaknesses?: { description: string; evidence?: string | null }[];
 }): string {
-  const { programme, stage, documents, plan, style: panelStyle } = args;
+  const { programme, stage, documents, plan, style: panelStyle, standingWeaknesses } = args;
   const assessment = stage.assessment;
   if (!assessment) {
     throw new Error(`Stage "${stage.id}" has no assessment block; a mock viva needs a panel and rubric.`);
@@ -128,6 +130,20 @@ export function buildPanelSystemPrompt(args: {
         "You drew up this plan while reading the report before the interview. Treat it as a map, not a script: follow the candidate's actual answers first, but make sure the weak spots get probed before the session ends.",
         "",
         renderQuestionPlan(plan),
+      ].join("\n"),
+    );
+  }
+
+  if (standingWeaknesses && standingWeaknesses.length > 0) {
+    parts.push(
+      [
+        "# Standing weaknesses from previous sessions",
+        "",
+        "The candidate has been examined before. These weaknesses were recorded and are NOT yet resolved. Work each one into the interview at a natural moment — do not read the list out or announce that you are re-testing. Where the candidate now handles a point well, acknowledge the improvement briefly and move on.",
+        "",
+        ...standingWeaknesses.map(
+          (w) => `- ${w.description}${w.evidence ? ` (evidence last time: "${w.evidence}")` : ""}`,
+        ),
       ].join("\n"),
     );
   }
@@ -194,13 +210,22 @@ export const VivaAssessmentSchema: z.ZodType<VivaAssessment> = z.object({
   weaknesses: z.array(z.string()),
   verdict: z.string(),
   narrative_md: z.string(),
+  weakness_updates: z
+    .array(
+      z.object({
+        id: z.string(),
+        status: z.enum(["resolved", "improving", "still_open"]),
+      }),
+    )
+    .optional(),
 });
 
 export function buildAssessmentPrompt(args: {
   stage: StageTemplate;
   messages: { role: "user" | "panel"; speaker?: string | null; content: string }[];
+  standingWeaknesses?: { id: string; description: string }[];
 }): { systemPrompt: string; userMessage: string } {
-  const { stage, messages } = args;
+  const { stage, messages, standingWeaknesses } = args;
   const assessment = stage.assessment;
   if (!assessment) {
     throw new Error(`Stage "${stage.id}" has no assessment block; cannot assess a viva for it.`);
@@ -231,6 +256,14 @@ export function buildAssessmentPrompt(args: {
     "# Verdict options (use the id string exactly)",
     verdictLines,
     "",
+    ...(standingWeaknesses && standingWeaknesses.length > 0
+      ? [
+          "# Standing weaknesses to adjudicate",
+          "These were recorded in previous sessions. Judge EACH ONE against this transcript: \"resolved\" (clearly handled well now), \"improving\" (partial progress), or \"still_open\" (unaddressed or still weak). Use the ids exactly.",
+          ...standingWeaknesses.map((w) => `- id "${w.id}": ${w.description}`),
+          "",
+        ]
+      : []),
     "# Rules",
     "- Base every score and comment strictly on evidence in the transcript; quote short phrases from the candidate's answers where they justify the judgement.",
     "- Score EVERY rubric criterion exactly once, using the criterion ids listed above.",
@@ -246,7 +279,9 @@ export function buildAssessmentPrompt(args: {
     '  "strengths": ["..."],',
     '  "weaknesses": ["..."],',
     `  "verdict": "<one of the verdict ids>",`,
-    '  "narrative_md": "<markdown narrative>"',
+    standingWeaknesses && standingWeaknesses.length > 0
+      ? '  "narrative_md": "<markdown narrative>",\n  "weakness_updates": [{ "id": "<standing weakness id>", "status": "resolved" | "improving" | "still_open" }]'
+      : '  "narrative_md": "<markdown narrative>"',
     "}",
     "```",
   ].join("\n");

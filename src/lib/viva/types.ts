@@ -52,6 +52,9 @@ export interface VivaAssessment {
   // Verdict id from the stage template's assessment.verdicts.
   verdict: string;
   narrative_md: string;
+  // Present only when standing weaknesses were provided to the assessment:
+  // the panel's judgement on each carried-over weakness.
+  weakness_updates?: { id: string; status: "resolved" | "improving" | "still_open" }[];
 }
 
 // Contracts implemented in engine.ts / report.ts:

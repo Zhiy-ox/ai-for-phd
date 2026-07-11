@@ -7,6 +7,7 @@ import { resolveProviderAndModel } from "@/lib/providers/registry";
 import type { ProviderId } from "@/lib/providers/types";
 import { getDocument } from "@/lib/db/repos/documents";
 import { insertReport, type ReportRow } from "@/lib/db/repos/reports";
+import { insertFinding } from "@/lib/db/repos/findings";
 import { completeJsonWithRetry } from "@/lib/shared/json-extract";
 import { buildDocReviewPrompt, DocReviewResultSchema } from "./prompts";
 import type { DocReviewResult, DocReviewSection } from "./types";
@@ -67,12 +68,23 @@ export async function runDocReview(
     });
   }
 
-  return insertReport({
+  const report = insertReport({
     documentId,
     type: "doc_review",
     rubric: result.value,
     contentMd: renderReviewMarkdown(stage, rubric, doc.filename, result.value),
   });
+  for (const section of result.value.sections) {
+    if (section.severity === "minor") continue;
+    insertFinding({
+      stageId: stage.id,
+      description: section.comment,
+      evidence: section.anchor_quote,
+      sourceType: "doc_review",
+      sourceId: report.id,
+    });
+  }
+  return report;
 }
 
 function mdCell(text: string): string {

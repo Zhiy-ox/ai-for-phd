@@ -116,8 +116,8 @@ src/
 re-attacking them; good answers resolve them; document re-reviews show score
 deltas. This is the product's moat — prioritize it.
 
-**Current state: migration shipped, nothing else.**
-`src/lib/db/migrations.ts` v2 already creates:
+**Status: tasks 1–7 and 9 ✅ shipped by Claude (2026-07-11). Task 8 is the
+only remaining item — ⏳ unclaimed, sized for Codex.**
 
 ```sql
 findings(id, stage_id, criterion_id, description, evidence,
@@ -125,42 +125,54 @@ findings(id, stage_id, criterion_id, description, evidence,
 -- status: open | improving | resolved   source_type: viva_assessment | doc_review
 ```
 
-**Remaining tasks (in order):**
+**Task log:**
 
-1. **Repo** `src/lib/db/repos/findings.ts`: `insertFinding` (skip when an
-   open finding with same `stage_id` + case-insensitive `description`
-   exists), `listFindings({stageId?, status?})`, `updateFindingStatus(id,
-   status)`.
-2. **Harvest — assessments** (`src/lib/viva/report.ts`): after a successful
-   assessment, insert each `weaknesses[]` item (stage from `VivaConfig`,
-   `source_type='viva_assessment'`, `source_id=report.id`,
-   `criterion_id=null`).
-3. **Harvest — reviews** (`src/lib/review/run.ts`): insert each
-   `major`/`moderate` section (`description=comment`,
-   `evidence=anchor_quote`, `source_type='doc_review'`).
-4. **Re-attack** (`src/lib/viva/engine.ts` + `prompts.ts`): load
-   open+improving findings for the stage; pass to `buildPanelSystemPrompt`
-   as `standingWeaknesses`; new prompt block: "standing weaknesses from
-   previous sessions — probe each at a natural moment; note where the
-   candidate has clearly improved".
-5. **Auto-resolution** (`prompts.ts` assessment prompt + `report.ts`): when
-   standing weaknesses were provided, assessment JSON gains optional
-   `weakness_updates: [{id, status: "resolved"|"improving"|"still_open"}]`
-   (extend `VivaAssessment` type + schema, both optional/backward-compatible);
-   apply via `updateFindingStatus`.
-6. **API**: `GET /api/findings?stageId=&status=` and
-   `PATCH /api/findings/[id]` (body `{status}`) — same conventions as other
-   routes (zod, force-dynamic, `{error}` bodies).
-7. **UI**: (a) dashboard current-stage panel gains an "Open weaknesses (n)"
-   list (top 3, link to stage) — `src/app/page.tsx`; (b) stage page Reports
-   tab gains a Weaknesses section with resolve/reopen buttons —
-   `src/app/stages/[stageId]/page.tsx`.
-8. **Score deltas** (`src/app/reports/[id]/page.tsx`): for a `doc_review`
-   report, find the previous `doc_review` whose document shares
-   (stage_id, kind); render ▲/▼ per-criterion deltas next to scores.
-   Client-side compute; no schema change.
-9. **Tests**: findings repo dedup/status transitions (in-memory DB via
-   `DATA_DIR` env to a temp dir), extended assessment schema parse.
+1. ✅ **Repo** — `src/lib/db/repos/findings.ts`: `insertFinding` (dedups
+   against unresolved same-stage case-insensitive descriptions; returns
+   `null` when skipped; rejects blank descriptions), `listFindings({stageId?,
+   status?, unresolved?})`, `updateFindingStatus`, `getFinding`.
+2. ✅ **Harvest — assessments** — `src/lib/viva/report.ts` inserts each
+   `weaknesses[]` item after a successful assessment
+   (`source_type='viva_assessment'`, `source_id=report.id`).
+3. ✅ **Harvest — reviews** — `src/lib/review/run.ts` inserts each
+   major/moderate section (`description=comment`, `evidence=anchor_quote`).
+4. ✅ **Re-attack** — `engine.ts` passes unresolved findings into
+   `buildPanelSystemPrompt` (`standingWeaknesses` arg); prompt block
+   instructs the panel to re-test naturally, never announcing the list.
+5. ✅ **Auto-resolution** — `buildAssessmentPrompt` takes
+   `standingWeaknesses` (with ids) and asks for `weakness_updates`
+   (`resolved|improving|still_open`); `VivaAssessment` type + zod schema
+   extended (optional, backward-compatible); `report.ts` applies updates
+   (only ids that were offered to the model are trusted; `still_open`→`open`).
+6. ✅ **API** — `GET /api/findings?stageId=&status=&unresolved=1`,
+   `PATCH /api/findings/[id]` `{status}`.
+7. ✅ **UI** — dashboard current-stage panel shows an amber "Open weaknesses
+   (n) — the panel remembers" strip (top 3, dot green when `improving`,
+   links to `?tab=reports`); stage Reports tab opens with a **Weakness
+   ledger** section (evidence quotes, status chip, Resolve button).
+8. ⏳ **Score deltas** — UNCLAIMED, self-contained UI task
+   (`src/app/reports/[id]/page.tsx`): for a `doc_review` report, find the
+   most recent OLDER `doc_review` report whose `document_id` resolves to a
+   document with the same `(stage_id, kind)` as this report's document
+   (fetch `/api/documents?stageId=…`, `/api/reports?type=doc_review`, and
+   this report's document via `/api/documents/[id]`); parse both
+   `rubric_json` payloads (`DocReviewResult`), build `Map<criterionId,
+   score>` for the previous one, and render a small ▲+n (green #2eb87a) /
+   ▼−n (red) delta chip beside each `ScoreBar` in `DocReviewView` plus a
+   "vs review of <date>" note under the Scorecard label. No schema or API
+   changes. Verify: `npx tsc --noEmit && npx eslint src && npx vitest run
+   && npm run build`.
+9. ✅ **Tests** — `tests/findings.test.ts` (7 tests, temp `DATA_DIR` set
+   before importing the db client): dedup, filters, status transitions,
+   re-raise after resolution, blank rejection, extended schema parse.
+   Suite total: 71.
+
+**Notes for the next agent:** migration v2 applies lazily on first DB open —
+no manual step. Findings are keyed to `stage_id` only (not programme), which
+is correct while a user runs one programme; revisit if multi-programme
+concurrency ever matters. Live loop untested end-to-end (needs a real
+assessment run) — first real viva assessment after this ships will populate
+the ledger; watch that `weakness_updates` comes back from both providers.
 
 ---
 

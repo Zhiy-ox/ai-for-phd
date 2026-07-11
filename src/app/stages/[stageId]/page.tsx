@@ -10,6 +10,7 @@ import type { SessionRow } from "@/lib/db/repos/sessions";
 import type { ReportRow } from "@/lib/db/repos/reports";
 import type { ProviderId } from "@/lib/providers/types";
 import type { PanelStyle } from "@/lib/viva/types";
+import type { FindingRow, FindingStatus } from "@/lib/db/repos/findings";
 import {
   ACTIVITY_LABELS,
   apiGet,
@@ -427,6 +428,73 @@ function VivaTab({ stage }: { stage: StageTemplate }) {
 /* Reports tab                                                         */
 /* ------------------------------------------------------------------ */
 
+function WeaknessLedger({ stage }: { stage: StageTemplate }) {
+  const [findings, setFindings] = useState<FindingRow[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const load = useCallback(() => {
+    apiGet<{ findings: FindingRow[] }>(`/api/findings?stageId=${stage.id}`)
+      .then((r) => setFindings(r.findings))
+      .catch((e) => setError(messageOf(e)));
+  }, [stage.id]);
+  useEffect(load, [load]);
+
+  async function setStatus(id: string, status: FindingStatus) {
+    try {
+      await apiSend(`/api/findings/${id}`, "PATCH", { status });
+      load();
+    } catch (e) {
+      setError(messageOf(e));
+    }
+  }
+
+  if (findings === null && !error) return null;
+  const open = (findings ?? []).filter((f) => f.status !== "resolved");
+  const resolved = (findings ?? []).filter((f) => f.status === "resolved");
+
+  return (
+    <div className="mb-6">
+      <SectionLabel>Weakness ledger</SectionLabel>
+      <p className="mt-1 text-xs text-ink-faint">
+        Harvested from assessments and reviews. The panel re-attacks open items in
+        every session until they are resolved.
+      </p>
+      {error ? <p className="mt-2 text-sm text-red-700">{error}</p> : null}
+      {open.length === 0 ? (
+        <p className="mt-2 text-sm text-ink-faint">
+          Nothing open{resolved.length > 0 ? ` — ${resolved.length} resolved` : ""}.
+        </p>
+      ) : (
+        <ul className="mt-2 space-y-2">
+          {open.map((f) => (
+            <li
+              key={f.id}
+              className="flex flex-wrap items-start gap-3 rounded-xl border px-4 py-3"
+              style={{ borderColor: "rgba(168,132,60,0.35)", background: "#faf7ef" }}
+            >
+              <div className="min-w-[220px] flex-1">
+                <p className="text-sm leading-snug text-ink">{f.description}</p>
+                {f.evidence ? (
+                  <p className="mt-1 text-xs italic text-ink-faint">“{f.evidence}”</p>
+                ) : null}
+              </div>
+              <span className="flex items-center gap-2">
+                <Chip tone={f.status === "improving" ? "green" : "amber"}>{f.status}</Chip>
+                <Button variant="secondary" onClick={() => setStatus(f.id, "resolved")}>
+                  Resolve
+                </Button>
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
+      {resolved.length > 0 && open.length > 0 ? (
+        <p className="mt-2 text-xs text-ink-faint">{resolved.length} resolved and retired.</p>
+      ) : null}
+    </div>
+  );
+}
+
 function ReportsTab({ stage }: { stage: StageTemplate }) {
   const [rows, setRows] = useState<
     | {
@@ -466,15 +534,20 @@ function ReportsTab({ stage }: { stage: StageTemplate }) {
   if (rows === null) return <PageLoading label="Loading reports…" />;
   if (rows.length === 0) {
     return (
-      <EmptyState
-        title="No reports yet"
-        hint="Run a document review or complete a mock viva and the assessment reports will collect here."
-      />
+      <div>
+        <WeaknessLedger stage={stage} />
+        <EmptyState
+          title="No reports yet"
+          hint="Run a document review or complete a mock viva and the assessment reports will collect here."
+        />
+      </div>
     );
   }
 
   return (
-    <ul className="space-y-2">
+    <div>
+      <WeaknessLedger stage={stage} />
+      <ul className="space-y-2">
       {rows.map(({ report, session }) => (
         <li key={report.id}>
           <Link href={`/reports/${report.id}`} className="block">
@@ -491,7 +564,8 @@ function ReportsTab({ stage }: { stage: StageTemplate }) {
           </Link>
         </li>
       ))}
-    </ul>
+      </ul>
+    </div>
   );
 }
 

@@ -14,6 +14,7 @@ import {
   type SessionRow,
 } from "@/lib/db/repos/sessions";
 import { getDocument } from "@/lib/db/repos/documents";
+import { listFindings } from "@/lib/db/repos/findings";
 import type { ReportRow } from "@/lib/db/repos/reports";
 import { buildPanelSystemPrompt, parseSpeakerTag, stripVivaCompleteToken } from "./prompts";
 import { generateQuestionPlan } from "./planner";
@@ -105,6 +106,10 @@ export async function* submitUtterance(
     documents,
     plan: config.questionPlan,
     style: config.style,
+    standingWeaknesses: listFindings({ stageId: stage.id, unresolved: true }).map((f) => ({
+      description: f.description,
+      evidence: f.evidence,
+    })),
   });
 
   const prior = listMessages(sessionId);

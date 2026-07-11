@@ -6,6 +6,12 @@ import type { StageTemplate } from "@/lib/template";
 import { getProvider } from "@/lib/providers/registry";
 import { getSession, listMessages } from "@/lib/db/repos/sessions";
 import { insertReport, type ReportRow } from "@/lib/db/repos/reports";
+import {
+  insertFinding,
+  listFindings,
+  updateFindingStatus,
+  type FindingRow,
+} from "@/lib/db/repos/findings";
 import { completeJsonWithRetry } from "@/lib/shared/json-extract";
 import { buildAssessmentPrompt, VivaAssessmentSchema } from "./prompts";
 import type { VivaAssessment, VivaConfig } from "./types";
@@ -27,7 +33,12 @@ export async function generateAssessment(
   }
 
   const provider = getProvider(config.provider);
-  const { systemPrompt, userMessage } = buildAssessmentPrompt({ stage, messages });
+  const standing = listFindings({ stageId: stage.id, unresolved: true });
+  const { systemPrompt, userMessage } = buildAssessmentPrompt({
+    stage,
+    messages,
+    standingWeaknesses: standing.map((f) => ({ id: f.id, description: f.description })),
+  });
   const result = await completeJsonWithRetry(
     provider,
     { systemPrompt, userMessage, model: config.model },
@@ -48,13 +59,33 @@ export async function generateAssessment(
     ...result.value,
     verdict: normalizeVerdict(result.value.verdict, stage),
   };
-  return insertReport({
+  const report = insertReport({
     sessionId,
     type: "viva_assessment",
     verdict: assessment.verdict,
     rubric: assessment,
     contentMd: renderAssessmentMarkdown(stage, assessment),
   });
+  applyWeaknessUpdates(assessment, standing);
+  for (const weakness of assessment.weaknesses) {
+    insertFinding({
+      stageId: stage.id,
+      description: weakness,
+      sourceType: "viva_assessment",
+      sourceId: report.id,
+    });
+  }
+  return report;
+}
+
+// Apply the panel's judgement on carried-over weaknesses. Only ids that were
+// actually offered to the model are trusted.
+function applyWeaknessUpdates(assessment: VivaAssessment, standing: FindingRow[]): void {
+  const known = new Set(standing.map((f) => f.id));
+  for (const update of assessment.weakness_updates ?? []) {
+    if (!known.has(update.id)) continue;
+    updateFindingStatus(update.id, update.status === "still_open" ? "open" : update.status);
+  }
 }
 
 // Maps whatever the model emitted onto a verdict id from the template when it

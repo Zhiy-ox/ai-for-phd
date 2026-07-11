@@ -8,6 +8,7 @@ import type { StageInstance, StageStatus } from "@/lib/db/repos/stage-instances"
 import type { DocumentSummary } from "@/lib/db/repos/documents";
 import type { SessionRow } from "@/lib/db/repos/sessions";
 import type { ReportRow } from "@/lib/db/repos/reports";
+import type { FindingRow } from "@/lib/db/repos/findings";
 import type { AppSettings } from "@/lib/db/repos/settings";
 import { apiGet, apiSend, formatDate, messageOf } from "@/components/api";
 import { ErrorBanner, PageLoading } from "@/components/ui";
@@ -22,6 +23,7 @@ interface StageInfo {
   docs: DocumentSummary[];
   sessions: SessionRow[];
   reports: ReportRow[];
+  findings: FindingRow[];
 }
 
 const ROMAN = ["I", "II", "III", "IV", "V", "VI", "VII", "VIII"];
@@ -269,6 +271,36 @@ function HeroCurrentStage({
               </svg>
             </Link>
           </div>
+
+          {info && info.findings.length > 0 ? (
+            <div
+              className="mt-3 rounded-lg border px-4 py-3"
+              style={{ borderColor: "rgba(168,132,60,0.35)", background: "#faf7ef" }}
+            >
+              <p className="text-[10.5px] font-semibold uppercase tracking-[0.18em]" style={{ color: "#a8843c" }}>
+                Open weaknesses ({info.findings.length}) — the panel remembers
+              </p>
+              <ul className="mt-1.5 space-y-1">
+                {info.findings.slice(0, 3).map((f) => (
+                  <li key={f.id} className="flex items-start gap-2 text-[13px] leading-snug text-ink-soft">
+                    <span
+                      className="mt-1.5 h-1.5 w-1.5 flex-none rounded-full"
+                      style={{ background: f.status === "improving" ? "#2eb87a" : "#a8843c" }}
+                    />
+                    {f.description}
+                  </li>
+                ))}
+              </ul>
+              {info.findings.length > 3 ? (
+                <Link
+                  href={`/stages/${stage.id}?tab=reports`}
+                  className="mt-1.5 inline-block text-xs font-medium text-oxford hover:underline"
+                >
+                  All {info.findings.length} →
+                </Link>
+              ) : null}
+            </div>
+          ) : null}
 
           <div className="mt-5 flex flex-wrap gap-5">
             {readiness.map((r) => (
@@ -577,10 +609,13 @@ export default function DashboardPage() {
     let cancelled = false;
     (async () => {
       try {
-        const [{ documents }, { sessions }, { reports }] = await Promise.all([
+        const [{ documents }, { sessions }, { reports }, { findings }] = await Promise.all([
           apiGet<{ documents: DocumentSummary[] }>(`/api/documents?stageId=${currentStageId}`),
           apiGet<{ sessions: SessionRow[] }>(`/api/sessions?stageId=${currentStageId}`),
           apiGet<{ reports: ReportRow[] }>("/api/reports"),
+          apiGet<{ findings: FindingRow[] }>(
+            `/api/findings?stageId=${currentStageId}&unresolved=1`,
+          ).catch(() => ({ findings: [] as FindingRow[] })),
         ]);
         if (cancelled) return;
         const sessionIds = new Set(sessions.map((s) => s.id));
@@ -589,6 +624,7 @@ export default function DashboardPage() {
           stageId: currentStageId,
           docs: documents,
           sessions,
+          findings,
           reports: reports.filter(
             (r) =>
               (r.session_id && sessionIds.has(r.session_id)) ||
@@ -596,7 +632,9 @@ export default function DashboardPage() {
           ),
         });
       } catch {
-        if (!cancelled) setStageInfo({ stageId: currentStageId, docs: [], sessions: [], reports: [] });
+        if (!cancelled) {
+          setStageInfo({ stageId: currentStageId, docs: [], sessions: [], reports: [], findings: [] });
+        }
       }
     })();
     return () => {
