@@ -1,5 +1,7 @@
 import { z } from "zod";
 import { oxfordDphil } from "@/templates/oxford-dphil";
+import { genericUkPhd } from "@/templates/generic-uk-phd";
+import { usPhd } from "@/templates/us-phd";
 
 export const ActivityIdSchema = z.enum([
   "doc_feedback",
@@ -107,6 +109,8 @@ function register(template: unknown): void {
 }
 
 register(oxfordDphil);
+register(genericUkPhd);
+register(usPhd);
 
 export const DEFAULT_PROGRAMME_ID = "oxford-dphil";
 
@@ -124,6 +128,26 @@ export function getStage(programmeId: string, stageId: string): StageTemplate {
   const stage = getProgramme(programmeId).stages.find((s) => s.id === stageId);
   if (!stage) throw new Error(`Unknown stage ${stageId} in programme ${programmeId}`);
   return stage;
+}
+
+// Display fallback for client code that has a stage id but no programme
+// context (e.g. session lists). Prefers the given programme, then searches
+// all registered programmes.
+export function findStage(
+  stageId: string,
+  preferredProgrammeId?: string,
+): StageTemplate | undefined {
+  if (preferredProgrammeId) {
+    const preferred = registry
+      .get(preferredProgrammeId)
+      ?.stages.find((s) => s.id === stageId);
+    if (preferred) return preferred;
+  }
+  for (const programme of registry.values()) {
+    const stage = programme.stages.find((s) => s.id === stageId);
+    if (stage) return stage;
+  }
+  return undefined;
 }
 
 export interface SessionStyle {

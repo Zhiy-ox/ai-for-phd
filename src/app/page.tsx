@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { getSessionStyle, type ProgrammeTemplate, type StageTemplate } from "@/lib/template";
 import type { StageInstance, StageStatus } from "@/lib/db/repos/stage-instances";
@@ -545,6 +546,7 @@ function MilestoneCard({
 /* ------------------------------------------------------------------ */
 
 export default function DashboardPage() {
+  const router = useRouter();
   const [data, setData] = useState<ProgrammeResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [currentStageId, setCurrentStageId] = useState<string | null>(null);
@@ -557,13 +559,18 @@ export default function DashboardPage() {
       apiGet<AppSettings>("/api/settings").catch(() => null),
     ])
       .then(([programmeData, settings]) => {
+        // Fresh install (never onboarded, no declared stage) → run the wizard.
+        if (settings && !settings.onboarded && !settings.current_stage) {
+          router.replace("/welcome");
+          return;
+        }
         setData(programmeData);
         setCurrentStageId(
           pickCurrentStageId(programmeData.programme, programmeData.instances, settings),
         );
       })
       .catch((e) => setError(messageOf(e)));
-  }, []);
+  }, [router]);
 
   useEffect(() => {
     if (!currentStageId) return;

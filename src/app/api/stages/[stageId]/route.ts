@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { DEFAULT_PROGRAMME_ID, getProgramme } from "@/lib/template";
+import { getActiveProgramme } from "@/lib/programme";
 import {
   ensureSeeded,
   updateStageInstance,
@@ -24,7 +24,7 @@ export async function PATCH(
     if (!parsed.success) {
       return Response.json({ error: parsed.error.message }, { status: 400 });
     }
-    const programme = getProgramme(DEFAULT_PROGRAMME_ID);
+    const programme = getActiveProgramme();
     if (!programme.stages.some((s) => s.id === stageId)) {
       return Response.json({ error: `Unknown stage: ${stageId}` }, { status: 404 });
     }

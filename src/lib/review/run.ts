@@ -1,6 +1,7 @@
 // One-shot rubric-based document review: load text, pick the stage rubric,
 // run a single completion, validate, render markdown, persist the report.
-import { DEFAULT_PROGRAMME_ID, getStage } from "@/lib/template";
+import { DEFAULT_PROGRAMME_ID, getProgramme, getStage } from "@/lib/template";
+import { getActiveProgrammeId } from "@/lib/programme";
 import type { RubricCriterion, StageTemplate } from "@/lib/template";
 import { resolveProviderAndModel } from "@/lib/providers/registry";
 import type { ProviderId } from "@/lib/providers/types";
@@ -23,14 +24,25 @@ export async function runDocReview(
     );
   }
 
-  const stageId = opts.stageId ?? doc.stage_id ?? "transfer";
-  const stage = getStage(DEFAULT_PROGRAMME_ID, stageId);
+  const programmeId = getActiveProgrammeId();
+  const requestedStageId = opts.stageId ?? doc.stage_id ?? null;
+  let stage: StageTemplate | undefined;
+  if (requestedStageId) {
+    try {
+      stage = getStage(programmeId, requestedStageId);
+    } catch {
+      // Stage from another programme (e.g. after switching presets) — fall through.
+    }
+  }
+  // Fall back to the active programme's first stage that carries a rubric.
+  stage ??= getProgramme(programmeId).stages.find((s) => s.assessment || s.reviewRubric);
+  if (!stage) throw new Error("No rubric-bearing stage in the active programme.");
   const rubric =
     stage.assessment?.rubric ??
     stage.reviewRubric ??
     getStage(DEFAULT_PROGRAMME_ID, "transfer").assessment?.rubric;
   if (!rubric || rubric.length === 0) {
-    throw new Error(`No rubric available for stage "${stageId}".`);
+    throw new Error(`No rubric available for stage "${stage.id}".`);
   }
 
   const { provider, model } = resolveProviderAndModel(opts);

@@ -28,6 +28,7 @@ export async function generateQuestionPlan(
   model: string | undefined,
   stage: StageTemplate,
   docText: string,
+  focus?: string,
   signal?: AbortSignal,
 ): Promise<QuestionPlan | undefined> {
   const rubric = stage.assessment?.rubric ?? [];
@@ -53,6 +54,9 @@ export async function generateQuestionPlan(
     rubricLines,
     "",
     "# Task",
+    ...(focus?.trim()
+      ? [`The candidate has asked to be pressed especially hard on: ${focus.trim()} — make sure at least one area targets it.`]
+      : []),
     "Read the report and produce a question plan:",
     "- 5–6 areas, each mapped to ONE rubric id from the list above; between them the areas should cover every criterion that this report gives you material for.",
     '- Each area: a short "title", 2–3 "seedQuestions" phrased exactly as an assessor would ask them aloud, and "weakSpots" — concrete soft points you actually found in THIS report (unsupported claims, missing controls, thin literature coverage, vague plans, suspicious numbers). Quote short phrases from the report in the weak spots where you can. If an area has no genuine weak spot, use an empty array rather than inventing one.',

@@ -11,6 +11,7 @@ import {
 import { mkdirSync } from "node:fs";
 import { scratchDir } from "@/lib/db/client";
 import { checkCodexAuth } from "./auth-status";
+import { codexBinary } from "./binaries";
 import {
   buildReplaySystemPrompt,
   errorEventFromUnknown,
@@ -93,7 +94,8 @@ export class CodexEventMapper {
 
 function buildCodexOptions(): CodexOptions {
   const options: CodexOptions = {};
-  if (process.env.CODEX_BIN) options.codexPathOverride = process.env.CODEX_BIN;
+  const bin = codexBinary();
+  if (bin) options.codexPathOverride = bin;
   return options;
 }
 

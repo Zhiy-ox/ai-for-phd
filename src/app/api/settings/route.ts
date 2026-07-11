@@ -8,6 +8,8 @@ const PutBodySchema = z.object({
   claude_model: z.string().optional(),
   codex_model: z.string().optional(),
   current_stage: z.string().optional(),
+  programme_id: z.string().optional(),
+  onboarded: z.string().optional(),
 });
 
 export async function GET(): Promise<Response> {

@@ -1,5 +1,13 @@
 import type { ProviderErrorCode, ProviderId } from "@/lib/providers/types";
 
+// User-chosen examiner style for a session.
+export interface PanelStyle {
+  // supportive: encouraging rehearsal · standard: realistic · hostile: worst-day pressure
+  intensity: "supportive" | "standard" | "hostile";
+  // Optional area the candidate asked to be pressed on.
+  focus?: string;
+}
+
 // Stored in sessions.config_json for viva sessions.
 export interface VivaConfig {
   programmeId: string;
@@ -9,6 +17,7 @@ export interface VivaConfig {
   // Primary report first, then supporting documents.
   documentIds: string[];
   questionPlan?: QuestionPlan;
+  style?: PanelStyle;
 }
 
 export interface QuestionPlan {

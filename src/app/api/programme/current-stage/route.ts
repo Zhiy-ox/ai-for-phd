@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { DEFAULT_PROGRAMME_ID, getProgramme } from "@/lib/template";
+import { getActiveProgramme } from "@/lib/programme";
 import { setCurrentStage } from "@/lib/db/repos/stage-instances";
 import { setSettings } from "@/lib/db/repos/settings";
 
@@ -13,7 +13,7 @@ export async function POST(request: Request): Promise<Response> {
     if (!parsed.success) {
       return Response.json({ error: "stageId is required" }, { status: 400 });
     }
-    const programme = getProgramme(DEFAULT_PROGRAMME_ID);
+    const programme = getActiveProgramme();
     if (!programme.stages.some((s) => s.id === parsed.data.stageId)) {
       return Response.json(
         { error: `Unknown stage: ${parsed.data.stageId}` },

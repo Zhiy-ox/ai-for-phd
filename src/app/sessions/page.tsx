@@ -3,19 +3,16 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import type { SessionRow } from "@/lib/db/repos/sessions";
-import { DEFAULT_PROGRAMME_ID, getSessionStyle, getStage } from "@/lib/template";
+import { findStage, getSessionStyle } from "@/lib/template";
 import { apiGet, formatDateTime, messageOf } from "@/components/api";
 import { ProviderBadge, SessionStatusChip } from "@/components/status-chip";
 import { Card, EmptyState, ErrorBanner, PageLoading, SectionLabel } from "@/components/ui";
 
 function describeSession(s: SessionRow): string {
   if (s.type !== "viva") return "Document review";
-  try {
-    const stage = getStage(DEFAULT_PROGRAMME_ID, s.stage_id);
-    return `${getSessionStyle(stage).label} — ${stage.title}`;
-  } catch {
-    return `Session — ${s.stage_id}`;
-  }
+  const stage = findStage(s.stage_id);
+  if (!stage) return `Session — ${s.stage_id}`;
+  return `${getSessionStyle(stage).label} — ${stage.title}`;
 }
 
 export default function SessionsPage() {

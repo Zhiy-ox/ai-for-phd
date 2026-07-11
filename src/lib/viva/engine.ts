@@ -1,6 +1,7 @@
 // Mock-viva session engine: session lifecycle + one streamed turn at a time.
 // Implements the contracts documented in ./types.ts.
-import { DEFAULT_PROGRAMME_ID, getProgramme, getStage } from "@/lib/template";
+import { getProgramme, getStage } from "@/lib/template";
+import { getActiveProgrammeId } from "@/lib/programme";
 import type { ChatMessage, ProviderId, TurnRequest } from "@/lib/providers/types";
 import { getProvider, resolveProviderAndModel } from "@/lib/providers/registry";
 import {
@@ -17,7 +18,7 @@ import type { ReportRow } from "@/lib/db/repos/reports";
 import { buildPanelSystemPrompt, parseSpeakerTag, stripVivaCompleteToken } from "./prompts";
 import { generateQuestionPlan } from "./planner";
 import { generateAssessment } from "./report";
-import type { SessionEvent, VivaConfig } from "./types";
+import type { PanelStyle, SessionEvent, VivaConfig } from "./types";
 
 const BEGIN_MESSAGE =
   "(The candidate has entered the room. Introduce the panel briefly and ask your first question.)";
@@ -40,24 +41,33 @@ export async function startVivaSession(opts: {
   provider?: ProviderId;
   documentIds: string[];
   model?: string;
+  style?: PanelStyle;
 }): Promise<SessionRow> {
   if (opts.documentIds.length === 0) {
     throw new Error("A mock viva needs at least one document.");
   }
-  const stage = getStage(DEFAULT_PROGRAMME_ID, opts.stageId);
+  const programmeId = getActiveProgrammeId();
+  const stage = getStage(programmeId, opts.stageId);
   if (!stage.assessment) {
     throw new Error(`Stage "${stage.id}" does not define a viva panel.`);
   }
   const { provider, model } = resolveProviderAndModel(opts);
   const documents = loadVivaDocuments(opts.documentIds);
-  const questionPlan = await generateQuestionPlan(provider, model, stage, documents[0].text);
+  const questionPlan = await generateQuestionPlan(
+    provider,
+    model,
+    stage,
+    documents[0].text,
+    opts.style?.focus,
+  );
   const config: VivaConfig = {
-    programmeId: DEFAULT_PROGRAMME_ID,
+    programmeId,
     stageId: stage.id,
     provider: provider.id,
     model,
     documentIds: opts.documentIds,
     questionPlan,
+    style: opts.style,
   };
   return createSession({ type: "viva", stageId: stage.id, provider: provider.id, config });
 }
@@ -94,6 +104,7 @@ export async function* submitUtterance(
     stage,
     documents,
     plan: config.questionPlan,
+    style: config.style,
   });
 
   const prior = listMessages(sessionId);

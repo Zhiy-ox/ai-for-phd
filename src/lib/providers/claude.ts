@@ -9,6 +9,7 @@ import {
 import { mkdirSync } from "node:fs";
 import { scratchDir } from "@/lib/db/client";
 import { checkClaudeAuth } from "./auth-status";
+import { claudeBinary } from "./binaries";
 import {
   ProviderCallError,
   type ChatMessage,
@@ -103,7 +104,7 @@ function buildOptions(cfg: {
     settingSources: [],
     maxTurns: 1,
     includePartialMessages: cfg.includePartialMessages,
-    pathToClaudeCodeExecutable: process.env.CLAUDE_BIN ?? "claude",
+    pathToClaudeCodeExecutable: claudeBinary() ?? "claude",
     cwd: scratchDir,
     env: sanitizedEnv(),
   };

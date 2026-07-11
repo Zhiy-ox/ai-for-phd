@@ -9,6 +9,10 @@ export interface AppSettings {
   // Stage id the user says they are at; "" means never set (fall back to
   // the first active stage instance).
   current_stage: string;
+  // Programme template id; "" means the built-in default.
+  programme_id: string;
+  // "1" once the first-run wizard has completed.
+  onboarded: string;
 }
 
 export const DEFAULT_SETTINGS: AppSettings = {
@@ -16,6 +20,8 @@ export const DEFAULT_SETTINGS: AppSettings = {
   claude_model: "claude-sonnet-4-5",
   codex_model: "",
   current_stage: "",
+  programme_id: "",
+  onboarded: "",
 };
 
 export function getSettings(): AppSettings {

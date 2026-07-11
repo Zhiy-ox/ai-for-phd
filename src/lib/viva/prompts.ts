@@ -9,7 +9,7 @@ import {
   type RubricCriterion,
   type StageTemplate,
 } from "@/lib/template";
-import type { QuestionPlan, VivaAssessment } from "./types";
+import type { PanelStyle, QuestionPlan, VivaAssessment } from "./types";
 import { VIVA_COMPLETE_TOKEN } from "./types";
 
 // Keep prompts within a sane size even for very long extracted documents.
@@ -53,13 +53,23 @@ function renderQuestionPlan(plan: QuestionPlan): string {
     .join("\n\n");
 }
 
+// Tone modifiers for the user-chosen examiner intensity.
+const INTENSITY_RULES: Record<PanelStyle["intensity"], string> = {
+  supportive:
+    "SESSION STYLE — SUPPORTIVE REHEARSAL: this is an early practice run. Stay genuinely rigorous, but be warm and constructive: acknowledge good answers explicitly, soften challenges with encouragement, allow a brief steadying hint when the candidate is clearly stuck, and keep follow-up pressure to at most one level deep before moving on.",
+  standard: "",
+  hostile:
+    "SESSION STYLE — HOSTILE PANEL: play this as the candidate's worst realistic day. Be cold, terse, and openly sceptical (never abusive or personal). Interrupt waffle by naming it, refuse to accept generalities, demand numbers and citations, push follow-ups a full 3 levels on every weak answer, and let silence sit — no reassurance, no encouragement, no hints.",
+};
+
 export function buildPanelSystemPrompt(args: {
   programme: ProgrammeTemplate;
   stage: StageTemplate;
   documents: { title: string; text: string }[];
   plan?: QuestionPlan;
+  style?: PanelStyle;
 }): string {
-  const { programme, stage, documents, plan } = args;
+  const { programme, stage, documents, plan, style: panelStyle } = args;
   const assessment = stage.assessment;
   if (!assessment) {
     throw new Error(`Stage "${stage.id}" has no assessment block; a mock viva needs a panel and rubric.`);
@@ -138,6 +148,14 @@ export function buildPanelSystemPrompt(args: {
       `10. After roughly 12–15 substantive questions, once the rubric is adequately covered, ${second.name} or ${first.name} delivers brief closing remarks: thank the candidate, say the panel will confer and the outcome will follow in writing — do NOT announce a verdict. Then output ${VIVA_COMPLETE_TOKEN} ALONE on the final line of that message. Do not output this token anywhere else, ever.`,
     ].join("\n"),
   );
+
+  const intensityRule = panelStyle ? INTENSITY_RULES[panelStyle.intensity] : "";
+  if (intensityRule) parts.push(intensityRule);
+  if (panelStyle?.focus?.trim()) {
+    parts.push(
+      `# Requested focus\n\nThe candidate has asked to be pressed especially hard on: ${panelStyle.focus.trim()}. Make sure this area gets sustained attention without neglecting the rest of the rubric.`,
+    );
+  }
 
   return parts.join("\n\n");
 }

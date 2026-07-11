@@ -1,11 +1,11 @@
-import { DEFAULT_PROGRAMME_ID, getProgramme } from "@/lib/template";
+import { getActiveProgramme } from "@/lib/programme";
 import { ensureSeeded, listStageInstances } from "@/lib/db/repos/stage-instances";
 
 export const dynamic = "force-dynamic";
 
 export async function GET(): Promise<Response> {
   try {
-    const programme = getProgramme(DEFAULT_PROGRAMME_ID);
+    const programme = getActiveProgramme();
     ensureSeeded(programme);
     const instances = listStageInstances(programme.id);
     return Response.json({ programme, instances });

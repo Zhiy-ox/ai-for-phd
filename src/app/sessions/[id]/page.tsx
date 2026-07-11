@@ -5,7 +5,7 @@ import { useParams, useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { MessageRow, SessionRow } from "@/lib/db/repos/sessions";
 import type { ReportRow } from "@/lib/db/repos/reports";
-import { DEFAULT_PROGRAMME_ID, getSessionStyle, getStage } from "@/lib/template";
+import { findStage, getSessionStyle } from "@/lib/template";
 import { apiGet, apiSend, messageOf } from "@/components/api";
 import { streamSessionEvents } from "@/components/use-sse-stream";
 import { cancelSpeech, speakAloud, useSpeechRecognition } from "@/components/use-speech";
@@ -26,21 +26,14 @@ interface ChatEntry {
 
 // "Mock viva — Transfer of Status", "Rebuttal sparring — Papers & Rebuttals", …
 function sessionTitle(stageId: string): string {
-  try {
-    const stage = getStage(DEFAULT_PROGRAMME_ID, stageId);
-    return `${getSessionStyle(stage).label} — ${stage.title}`;
-  } catch {
-    return "Session";
-  }
+  const stage = findStage(stageId);
+  if (!stage) return "Session";
+  return `${getSessionStyle(stage).label} — ${stage.title}`;
 }
 
 // The assessor personas for the panel bench.
 function panelFor(stageId: string): { id: string; name: string; role: string }[] {
-  try {
-    return getStage(DEFAULT_PROGRAMME_ID, stageId).assessment?.panel ?? [];
-  } catch {
-    return [];
-  }
+  return findStage(stageId)?.assessment?.panel ?? [];
 }
 
 // Panel utterances open with "[Dr Chen]" / "[Prof Whitfield]". Pull the tag

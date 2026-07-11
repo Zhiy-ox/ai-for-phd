@@ -9,6 +9,7 @@ import type { DocumentSummary } from "@/lib/db/repos/documents";
 import type { SessionRow } from "@/lib/db/repos/sessions";
 import type { ReportRow } from "@/lib/db/repos/reports";
 import type { ProviderId } from "@/lib/providers/types";
+import type { PanelStyle } from "@/lib/viva/types";
 import {
   ACTIVITY_LABELS,
   apiGet,
@@ -234,6 +235,8 @@ function VivaTab({ stage }: { stage: StageTemplate }) {
   const [primary, setPrimary] = useState<string | null>(null);
   const [supporting, setSupporting] = useState<Set<string>>(new Set());
   const [provider, setProvider] = useState<ProviderId>("claude");
+  const [intensity, setIntensity] = useState<PanelStyle["intensity"]>("standard");
+  const [focus, setFocus] = useState("");
   const [starting, setStarting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const router = useRouter();
@@ -264,10 +267,12 @@ function VivaTab({ stage }: { stage: StageTemplate }) {
     setError(null);
     try {
       const documentIds = [primary, ...[...supporting].filter((id) => id !== primary)];
+      const style: PanelStyle = { intensity, focus: focus.trim() || undefined };
       const { session } = await apiSend<{ session: SessionRow }>("/api/sessions", "POST", {
         stageId: stage.id,
         provider,
         documentIds,
+        style,
       });
       router.push(`/sessions/${session.id}`);
     } catch (err) {
@@ -298,6 +303,54 @@ function VivaTab({ stage }: { stage: StageTemplate }) {
         <div className="mt-2">
           <ProviderPicker value={provider} onChange={setProvider} disabled={starting} />
         </div>
+      </div>
+
+      <div>
+        <SectionLabel>Examiner style</SectionLabel>
+        <div className="mt-2 grid gap-2.5 sm:grid-cols-3">
+          {(
+            [
+              {
+                id: "supportive",
+                title: "Supportive",
+                blurb: "Early rehearsal — rigorous but warm, hints allowed.",
+              },
+              {
+                id: "standard",
+                title: "Standard",
+                blurb: "A realistic panel: fair, exacting, follow-up pressure.",
+              },
+              {
+                id: "hostile",
+                title: "Hostile",
+                blurb: "Your worst day: cold, terse, three-deep follow-ups.",
+              },
+            ] as { id: PanelStyle["intensity"]; title: string; blurb: string }[]
+          ).map((opt) => (
+            <button
+              key={opt.id}
+              type="button"
+              onClick={() => setIntensity(opt.id)}
+              disabled={starting}
+              className="rounded-xl border-[1.5px] p-3.5 text-left transition-colors"
+              style={{
+                borderColor: intensity === opt.id ? "#2953c4" : "var(--color-line)",
+                background: intensity === opt.id ? "#e8eef9" : "#fffdf8",
+              }}
+            >
+              <p className="text-sm font-semibold text-ink">{opt.title}</p>
+              <p className="mt-1 text-[12px] leading-snug text-ink-soft">{opt.blurb}</p>
+            </button>
+          ))}
+        </div>
+        <input
+          type="text"
+          value={focus}
+          onChange={(e) => setFocus(e.target.value)}
+          disabled={starting}
+          placeholder="Press me especially on… (optional, e.g. 'the statistics in section 4')"
+          className="mt-2.5 w-full rounded-xl border border-line bg-white px-3.5 py-2.5 text-sm text-ink focus:border-oxford focus:outline-none"
+        />
       </div>
 
       <div>

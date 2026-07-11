@@ -4,6 +4,7 @@
 
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
+import { claudeBinary, codexBinary } from "./binaries";
 import type { AuthStatus } from "./types";
 
 const execFileAsync = promisify(execFile);
@@ -35,7 +36,14 @@ async function runStatusCommand(
 }
 
 export async function checkClaudeAuth(): Promise<AuthStatus> {
-  const bin = process.env.CLAUDE_BIN ?? "claude";
+  const bin = claudeBinary();
+  if (!bin) {
+    return {
+      ok: false,
+      detail:
+        "Claude Code CLI not found — install it (https://claude.com/claude-code), then log in with `claude`.",
+    };
+  }
   const { ok, output } = await runStatusCommand(bin, ["auth", "status"]);
   // `claude auth status` prints JSON: { loggedIn, email, subscriptionType, … }
   try {
@@ -59,7 +67,14 @@ export async function checkClaudeAuth(): Promise<AuthStatus> {
 }
 
 export async function checkCodexAuth(): Promise<AuthStatus> {
-  const bin = process.env.CODEX_BIN ?? "codex";
+  const bin = codexBinary();
+  if (!bin) {
+    return {
+      ok: false,
+      detail:
+        "Codex CLI not found — install it (`npm i -g @openai/codex` or `brew install codex`), then run `codex login`.",
+    };
+  }
   const { ok, output } = await runStatusCommand(bin, ["login", "status"]);
   if (!ok || /not.*logged.*in/i.test(output)) {
     return { ok: false, detail: CODEX_FIX };

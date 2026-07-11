@@ -11,6 +11,12 @@ const CreateBodySchema = z.object({
   stageId: z.string().min(1),
   provider: z.enum(["claude", "codex"]).optional(),
   documentIds: z.array(z.string().min(1)).min(1),
+  style: z
+    .object({
+      intensity: z.enum(["supportive", "standard", "hostile"]),
+      focus: z.string().max(500).optional(),
+    })
+    .optional(),
   model: z.string().optional(),
 });
 
@@ -45,6 +51,7 @@ export async function POST(request: Request): Promise<Response> {
       stageId: parsed.data.stageId,
       provider,
       documentIds: parsed.data.documentIds,
+      style: parsed.data.style,
       model: parsed.data.model,
     });
     return Response.json({ session });

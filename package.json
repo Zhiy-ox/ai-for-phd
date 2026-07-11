@@ -34,5 +34,11 @@
     "tsx": "^4.23.0",
     "typescript": "^5",
     "vitest": "^4.1.10"
-  }
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Zhiy-ox/ai-for-phd.git"
+  },
+  "description": "Your doctorate, rehearsed before it's real — PhD milestone copilot with AI assessor panels. Local-first, no API keys."
 }

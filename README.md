@@ -1,13 +1,23 @@
 # AI for PhD
 
-Your Oxford DPhil, rehearsed before it's real. A single-user local web app that
-structures the doctorate as a journey of formal gates — Transfer of Status,
-Confirmation, papers & rebuttals, thesis, final viva — and lets AI both help
-you produce the documents and **play the institutional counterpart**: assessors
-grilling you in a mock transfer viva, a senior reviewer scoring your report
-against the departmental rubric.
+**Your doctorate, rehearsed before it's real.** A local-first web app that
+structures the PhD as a journey of formal gates — upgrade/transfer viva,
+confirmation, papers & rebuttals, thesis, final defence — and lets AI both
+help you produce the documents and **play the institutional counterpart**:
+assessors grilling you in a mock viva, Reviewer 2 attacking your manuscript,
+a senior reviewer scoring your drafts against the departmental rubric.
 
-**All seven stages are interactive:**
+- **No API keys, no cloud.** Runs on your machine, on Claude/ChatGPT
+  subscriptions you already have. Your unpublished research never leaves
+  your laptop.
+- **Three programme presets** — Oxford DPhil, generic UK PhD, US PhD
+  (quals → candidacy → defense) — picked in a first-run wizard; every stage,
+  rubric, and examiner panel is data you can edit.
+- **Choose your panel's mood** — supportive rehearsal, standard, or a
+  hostile worst-day panel, plus a "press me especially on…" focus.
+- **Answer by voice** — the examiner asks, you speak, the transcript goes in.
+
+**Every stage of the journey is interactive** (Oxford DPhil preset shown):
 
 - **Probationer Research Student** — feedback on your research proposal and
   literature review (question, significance, approach, literature, prose).
@@ -47,15 +57,23 @@ is persisted and replayed into a fresh session — nothing is lost.
 ## Run it
 
 ```bash
-cd "/Users/xuzhiyu/Documents/AI for PhD"
+git clone https://github.com/Zhiy-ox/ai-for-phd.git
+cd ai-for-phd
 npm install
-npx tsx scripts/seed.ts     # seed stage instances (idempotent)
 npm run dev                 # → http://localhost:3000
 ```
 
-Requirements: Node ≥ 22.13 (uses built-in `node:sqlite`), Claude Code and/or
-Codex CLI installed and logged in. Binary paths are configured in `.env.local`
-(`CLAUDE_BIN`, `CODEX_BIN`); data lives in `data/` (gitignored).
+First launch opens a **setup wizard**: it checks your AI backends, lets you
+pick a programme preset, and asks where you are in the doctorate. No
+configuration files needed — the `claude`/`codex` CLIs are auto-detected from
+your PATH and common install locations (override with `CLAUDE_BIN`/`CODEX_BIN`
+env vars if you keep them somewhere unusual).
+
+Requirements: Node ≥ 22.13 (uses the built-in `node:sqlite`), and at least one
+of [Claude Code](https://claude.com/claude-code) (`claude` — log in once) or
+the [Codex CLI](https://github.com/openai/codex) (`codex login`). All app data
+lives in `data/` inside the folder (gitignored — your documents, transcripts,
+and reports stay local).
 
 ## Voice answers
 

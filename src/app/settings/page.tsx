@@ -1,7 +1,9 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useState } from "react";
 import type { AppSettings } from "@/lib/db/repos/settings";
+import { DEFAULT_PROGRAMME_ID, listProgrammes } from "@/lib/template";
 import type { ProviderId } from "@/lib/providers/types";
 import { apiGet, apiSend, messageOf, PROVIDER_LABELS } from "@/components/api";
 import { AuthDot, useProviderStatus } from "@/components/provider-picker";
@@ -56,6 +58,30 @@ export default function SettingsPage() {
       </header>
 
       <div className="space-y-6">
+        <Card className="p-5">
+          <SectionLabel>Programme</SectionLabel>
+          <p className="mt-1 text-xs text-ink-faint">
+            The stage structure, gate names, and examiner panels. Switching seeds the
+            new programme&apos;s stages; your documents and sessions are kept.
+          </p>
+          <div className="mt-3 flex flex-wrap items-center gap-3">
+            <select
+              value={settings.programme_id || DEFAULT_PROGRAMME_ID}
+              onChange={(e) => setSettings({ ...settings, programme_id: e.target.value })}
+              className="rounded-lg border border-line bg-white px-3 py-2 text-sm text-ink focus:border-oxford focus:outline-none"
+            >
+              {listProgrammes().map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.name}
+                </option>
+              ))}
+            </select>
+            <Link href="/welcome" className="text-[13px] font-medium text-oxford hover:underline">
+              Re-run setup →
+            </Link>
+          </div>
+        </Card>
+
         <Card className="p-5">
           <SectionLabel>Default assessor backend</SectionLabel>
           <div className="mt-3 space-y-2">
