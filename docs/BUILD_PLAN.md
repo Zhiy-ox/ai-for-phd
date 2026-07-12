@@ -164,9 +164,12 @@ findings(id, stage_id, criterion_id, description, evidence,
 **Notes for the next agent:** migration v2 applies lazily on first DB open —
 no manual step. Findings are keyed to `stage_id` only (not programme), which
 is correct while a user runs one programme; revisit if multi-programme
-concurrency ever matters. Live loop untested end-to-end (needs a real
-assessment run) — first real viva assessment after this ships will populate
-the ledger; watch that `weakness_updates` comes back from both providers.
+concurrency ever matters. A synthetic live acceptance run with Codex
+(2026-07-11) verified validated assessment JSON, `weakness_updates` resolving
+a standing item, new-weakness harvesting, and the score-delta UI at 1280,
+640, and 390 px. The full streamed panel loop has not yet been exercised live;
+on the next real mock viva, confirm that the opening turns naturally re-attack
+standing weaknesses.
 
 ---
 
@@ -188,7 +191,7 @@ the ledger; watch that `weakness_updates` comes back from both providers.
 ## 6. Working agreements (both agents)
 
 - **Verify before done:** `npx tsc --noEmit && npx eslint src scripts tests
-  && npx vitest run && npm run build` — all must be clean. 64+ tests stay
+  && npx vitest run && npm run build` — all must be clean. 76+ tests stay
   green; add tests for new pure logic.
 - **Live checks:** `npm run dev` (port 3000). The owner often runs his own
   server on 3000 — check before killing anything, and stop servers you

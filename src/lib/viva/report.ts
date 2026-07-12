@@ -33,7 +33,7 @@ export async function generateAssessment(
   }
 
   const provider = getProvider(config.provider);
-  const standing = listFindings({ stageId: stage.id, unresolved: true });
+  const standing = listFindings({ programmeId: config.programmeId, stageId: stage.id, unresolved: true });
   const { systemPrompt, userMessage } = buildAssessmentPrompt({
     stage,
     messages,
@@ -69,6 +69,7 @@ export async function generateAssessment(
   applyWeaknessUpdates(assessment, standing);
   for (const weakness of assessment.weaknesses) {
     insertFinding({
+      programmeId: config.programmeId,
       stageId: stage.id,
       description: weakness,
       sourceType: "viva_assessment",

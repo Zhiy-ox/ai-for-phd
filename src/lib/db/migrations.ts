@@ -81,4 +81,11 @@ export const MIGRATIONS: string[] = [
   );
   CREATE INDEX idx_findings_stage ON findings(stage_id, status);
   `,
+  // v3 — add programme_id to findings table, default to 'oxford-dphil' for backward compatibility
+  `
+  ALTER TABLE findings ADD COLUMN programme_id TEXT;
+  UPDATE findings SET programme_id = 'oxford-dphil' WHERE programme_id IS NULL;
+  DROP INDEX IF EXISTS idx_findings_stage;
+  CREATE INDEX idx_findings_programme_stage ON findings(programme_id, stage_id, status);
+  `,
 ];

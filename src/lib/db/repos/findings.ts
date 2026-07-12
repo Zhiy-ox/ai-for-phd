@@ -1,12 +1,15 @@
 // Weakness ledger: weak spots harvested from viva assessments and document
 // reviews, carried across sessions until resolved. See docs/BUILD_PLAN.md §4.
 import { getDb, newId, nowIso } from "../client";
+import { getSettings } from "./settings";
+import { DEFAULT_PROGRAMME_ID } from "@/lib/template";
 
 export type FindingStatus = "open" | "improving" | "resolved";
 export type FindingSource = "viva_assessment" | "doc_review";
 
 export interface FindingRow {
   id: string;
+  programme_id: string;
   stage_id: string;
   criterion_id: string | null;
   description: string;
@@ -18,10 +21,11 @@ export interface FindingRow {
   updated_at: string;
 }
 
-// Inserts a finding unless an unresolved one with the same stage and
+// Inserts a finding unless an unresolved one with the same programme, stage, and
 // (case-insensitive) description already exists — assessments often restate
 // the same weakness. Returns null when deduplicated away.
 export function insertFinding(f: {
+  programmeId?: string;
   stageId: string;
   criterionId?: string | null;
   description: string;
@@ -32,22 +36,26 @@ export function insertFinding(f: {
   const db = getDb();
   const description = f.description.trim();
   if (!description) return null;
+
+  const programmeId = f.programmeId || getSettings().programme_id || DEFAULT_PROGRAMME_ID;
+
   const existing = db
     .prepare(
       `SELECT id FROM findings
-       WHERE stage_id = ? AND status != 'resolved' AND lower(description) = lower(?)`,
+       WHERE programme_id = ? AND stage_id = ? AND status != 'resolved' AND lower(description) = lower(?)`,
     )
-    .get(f.stageId, description) as { id: string } | undefined;
+    .get(programmeId, f.stageId, description) as { id: string } | undefined;
   if (existing) return null;
 
   const id = newId();
   const now = nowIso();
   db.prepare(
-    `INSERT INTO findings (id, stage_id, criterion_id, description, evidence,
+    `INSERT INTO findings (id, programme_id, stage_id, criterion_id, description, evidence,
                            source_type, source_id, status, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, 'open', ?, ?)`,
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'open', ?, ?)`,
   ).run(
     id,
+    programmeId,
     f.stageId,
     f.criterionId ?? null,
     description,
@@ -66,6 +74,7 @@ export function getFinding(id: string): FindingRow | null {
 }
 
 export function listFindings(filter?: {
+  programmeId?: string;
   stageId?: string;
   status?: FindingStatus;
   // Convenience: open + improving (what a panel should re-attack).
@@ -73,6 +82,11 @@ export function listFindings(filter?: {
 }): FindingRow[] {
   const clauses: string[] = [];
   const values: string[] = [];
+
+  const programmeId = filter?.programmeId || getSettings().programme_id || DEFAULT_PROGRAMME_ID;
+  clauses.push("programme_id = ?");
+  values.push(programmeId);
+
   if (filter?.stageId) {
     clauses.push("stage_id = ?");
     values.push(filter.stageId);

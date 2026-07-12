@@ -77,6 +77,32 @@ describe("findings repo", () => {
       insertFinding({ stageId: "transfer", description: "   ", sourceType: "doc_review" }),
     ).toBeNull();
   });
+
+  it("isolates findings by programme", () => {
+    // Under oxford-dphil, insert a finding
+    const row = insertFinding({
+      programmeId: "oxford-dphil",
+      stageId: "upgrade",
+      description: "Oxford specific issue",
+      sourceType: "doc_review",
+    });
+    expect(row).not.toBeNull();
+
+    // Check that listing for oxford-dphil returns it
+    expect(listFindings({ programmeId: "oxford-dphil", stageId: "upgrade" })).toHaveLength(1);
+
+    // Check that listing for generic-uk-phd does NOT return it
+    expect(listFindings({ programmeId: "generic-uk-phd", stageId: "upgrade" })).toHaveLength(0);
+
+    // Try to insert same description on generic-uk-phd - should NOT be deduped since it's a different programme
+    const row2 = insertFinding({
+      programmeId: "generic-uk-phd",
+      stageId: "upgrade",
+      description: "Oxford specific issue",
+      sourceType: "doc_review",
+    });
+    expect(row2).not.toBeNull();
+  });
 });
 
 describe("assessment schema with weakness updates", () => {

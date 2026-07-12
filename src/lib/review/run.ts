@@ -77,6 +77,7 @@ export async function runDocReview(
   for (const section of result.value.sections) {
     if (section.severity === "minor") continue;
     insertFinding({
+      programmeId,
       stageId: stage.id,
       description: section.comment,
       evidence: section.anchor_quote,

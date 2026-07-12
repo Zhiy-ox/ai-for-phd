@@ -106,7 +106,7 @@ export async function* submitUtterance(
     documents,
     plan: config.questionPlan,
     style: config.style,
-    standingWeaknesses: listFindings({ stageId: stage.id, unresolved: true }).map((f) => ({
+    standingWeaknesses: listFindings({ programmeId: config.programmeId, stageId: stage.id, unresolved: true }).map((f) => ({
       description: f.description,
       evidence: f.evidence,
     })),

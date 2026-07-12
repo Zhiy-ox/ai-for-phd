@@ -3,7 +3,7 @@ import { mkdirSync } from "node:fs";
 import path from "node:path";
 import { MIGRATIONS } from "./migrations";
 
-export const dataDir = path.resolve(process.cwd(), process.env.DATA_DIR ?? "data");
+export const dataDir = path.resolve(/*turbopackIgnore: true*/ process.cwd(), process.env.DATA_DIR ?? "data");
 export const documentsDir = path.join(dataDir, "documents");
 // Empty directory handed to the agent runtimes as cwd so they have nothing to
 // read or edit even if a tool call slipped through.
