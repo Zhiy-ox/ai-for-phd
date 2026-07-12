@@ -4,7 +4,7 @@
 > Code, Codex) and human working on this repo: what the product is, what has
 > been built, what is in flight, what comes next, and the working agreements.
 > **Read this before writing code. Update it when you ship or re-scope
-> anything.** Last updated: 2026-07-11.
+> anything.** Last updated: 2026-07-11 (future roadmap added).
 
 ---
 
@@ -196,9 +196,58 @@ standing weaknesses.
   the room; sessions list labels them. Assessments still run and adjudicate
   standing weaknesses. NOT live-tested (quota) — first real drill is the
   acceptance test.
-- **Phase D — backlog** (unordered): supervisor-facing PDF export, guided 3-step stage stepper (design spec has
-  it; tabs work today), deadline countdowns on the milestone rail, usage-window
-  meter for Pro plans, `docs/` landing page for GitHub Pages, mobile pass.
+### Future roadmap (added 2026-07-11)
+
+**M0 — Validation sprint (owner-led; before building more).** Run the real
+thing: actual transfer draft → rubric review → full mock viva → assessment →
+ledger populates → quick-fire drill retires an item → re-review shows ▲
+deltas → one real rebuttal letter from a sparring session. Both providers
+exercised. File every paper-cut as a GitHub issue. *Exit criteria: the loop
+survives a real document, `weakness_updates` returns from both providers,
+and the owner would voluntarily run a second drill.*
+
+**M1 — Daily-use polish (v1.1).** Ship in any order; all are self-contained:
+- **Deadline awareness** — target-date countdowns on the milestone rail and
+  gate seal; "next move" gains urgency when a gate is < 6 weeks out.
+- **Supervisor export** — print-optimized view of an assessment report +
+  a one-page gate-readiness summary (ledger status, score trends) the
+  student can hand to their real supervisor.
+- **Guided stage stepper** — the design spec's 3-step flow (Submit →
+  Feedback → Face the panel) replacing stage tabs; the spec is in the
+  owner's Claude Design project.
+- **Quota UX** — surface provider usage-window state before a session
+  starts; suggest the other backend when one is rate-limited.
+- **Session management** — rename/delete sessions, retry-turn affordance.
+
+**M2 — Public launch (v1.2).**
+- `docs/` landing page on GitHub Pages: screenshots, a 60-second demo
+  GIF/video of a drill, install one-liner.
+- Demo mode: `npm run demo` seeds synthetic documents/sessions so a
+  visitor can tour without spending quota.
+- Mobile/responsive pass (viva room first — practice on the bus).
+- CONTRIBUTING.md + issue templates; a "add your programme template"
+  guide (templates are the natural first PR for outsiders).
+- Announce: owner's Oxford/UK network first, then r/PhD // PhD Twitter.
+  *Success: 10 external installs, 3 externally-filed issues.*
+
+**M3 — Depth (v2 themes; reprioritize on M2 feedback).**
+- **Progress analytics** — per-criterion score trends across sessions and
+  versions; a readiness dial per gate ("transfer-ready: 3.8/5 and rising").
+- **Hands-free viva** — per-persona TTS voices and auto-listen after each
+  question: a full oral rehearsal without touching the keyboard.
+- **Defense-talk mode** — upload slides (PDF), present aloud, panel
+  interrupts with questions mid-talk; for final-viva/defense stages.
+- **Literature-aware examiner** — optionally allow the Codex/Claude web
+  search tool ONLY for the examiner to pull real citations ("Kim 2025
+  reported 92% — why is yours lower?"). Must not weaken the
+  no-filesystem-tools invariant; search-only allowlist.
+- **Template community** — accept programme templates for more countries/
+  fields; keep the 3 curated presets as the wizard defaults.
+
+**Non-goals (standing, from owner decisions):** no API keys in the core
+app; no cloud storage of user documents; no in-app template editor until
+users ask; no gamification streaks — the product's tone is a rigorous
+colleague, not Duolingo.
 
 ---
 
