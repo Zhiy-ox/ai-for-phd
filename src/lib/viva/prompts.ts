@@ -68,10 +68,12 @@ export function buildPanelSystemPrompt(args: {
   documents: { title: string; text: string }[];
   plan?: QuestionPlan;
   style?: PanelStyle;
+  mode?: "viva" | "drill";
   // Unresolved weaknesses from previous sessions/reviews — the ledger.
   standingWeaknesses?: { description: string; evidence?: string | null }[];
 }): string {
   const { programme, stage, documents, plan, style: panelStyle, standingWeaknesses } = args;
+  const isDrill = args.mode === "drill";
   const assessment = stage.assessment;
   if (!assessment) {
     throw new Error(`Stage "${stage.id}" has no assessment block; a mock viva needs a panel and rubric.`);
@@ -110,6 +112,7 @@ export function buildPanelSystemPrompt(args: {
     ].join("\n"),
   );
 
+  if (documents.length > 0)
   parts.push(
     [
       "# Candidate's submitted documents",
@@ -148,6 +151,20 @@ export function buildPanelSystemPrompt(args: {
     );
   }
 
+  if (isDrill) {
+    parts.push(
+      [
+        "# Quick-fire drill rules",
+        "",
+        `1. This is a rapid practice drill, not a formal viva. ${first.name} conducts it ALONE — the second panel member stays silent.`,
+        `2. EVERY utterance starts with the tag [${first.name}] and contains EXACTLY ONE short, pointed question (one or two sentences). No preamble beyond the first turn's one-line welcome.`,
+        "3. After each answer: ONE crisp line of verdict-style feedback (\"Sharp.\" / \"Too vague — you never gave a number.\"), then immediately the next question. No lectures.",
+        "4. Prioritize the standing weaknesses above, then the rubric's weakest-covered areas. If documents are provided, ground questions in them; otherwise draw on the rubric and weaknesses alone.",
+        "5. Expect answers of at most a minute; if one rambles, cut to the next question.",
+        `6. After 8 questions, give a two-sentence overall verdict and output ${VIVA_COMPLETE_TOKEN} ALONE on the final line.`,
+      ].join("\n"),
+    );
+  } else {
   parts.push(
     [
       "# Interview rules",
@@ -164,6 +181,8 @@ export function buildPanelSystemPrompt(args: {
       `10. After roughly 12–15 substantive questions, once the rubric is adequately covered, ${second.name} or ${first.name} delivers brief closing remarks: thank the candidate, say the panel will confer and the outcome will follow in writing — do NOT announce a verdict. Then output ${VIVA_COMPLETE_TOKEN} ALONE on the final line of that message. Do not output this token anywhere else, ever.`,
     ].join("\n"),
   );
+
+  }
 
   const intensityRule = panelStyle ? INTENSITY_RULES[panelStyle.intensity] : "";
   if (intensityRule) parts.push(intensityRule);

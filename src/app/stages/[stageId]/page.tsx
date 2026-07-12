@@ -237,6 +237,7 @@ function VivaTab({ stage }: { stage: StageTemplate }) {
   const [supporting, setSupporting] = useState<Set<string>>(new Set());
   const [provider, setProvider] = useState<ProviderId>("claude");
   const [intensity, setIntensity] = useState<PanelStyle["intensity"]>("standard");
+  const [mode, setMode] = useState<"viva" | "drill">("viva");
   const [focus, setFocus] = useState("");
   const [starting, setStarting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -263,17 +264,20 @@ function VivaTab({ stage }: { stage: StageTemplate }) {
   }, [stage.id]);
 
   async function begin() {
-    if (!primary) return;
+    if (!primary && mode !== "drill") return;
     setStarting(true);
     setError(null);
     try {
-      const documentIds = [primary, ...[...supporting].filter((id) => id !== primary)];
+      const documentIds = primary
+        ? [primary, ...[...supporting].filter((id) => id !== primary)]
+        : [];
       const style: PanelStyle = { intensity, focus: focus.trim() || undefined };
       const { session } = await apiSend<{ session: SessionRow }>("/api/sessions", "POST", {
         stageId: stage.id,
         provider,
         documentIds,
         style,
+        mode,
       });
       router.push(`/sessions/${session.id}`);
     } catch (err) {
@@ -303,6 +307,41 @@ function VivaTab({ stage }: { stage: StageTemplate }) {
         <SectionLabel>Assessor backend</SectionLabel>
         <div className="mt-2">
           <ProviderPicker value={provider} onChange={setProvider} disabled={starting} />
+        </div>
+      </div>
+
+      <div>
+        <SectionLabel>Session type</SectionLabel>
+        <div className="mt-2 grid gap-2.5 sm:grid-cols-2">
+          {(
+            [
+              {
+                id: "viva",
+                title: getSessionStyle(stage).label,
+                blurb: "The full formal session: two panellists, ~12–15 questions, ends in a verdict report.",
+              },
+              {
+                id: "drill",
+                title: "Quick-fire drill",
+                blurb: "~10 minutes, one examiner, 8 rapid questions with instant feedback — prioritizes your open weaknesses. No document needed.",
+              },
+            ] as { id: "viva" | "drill"; title: string; blurb: string }[]
+          ).map((opt) => (
+            <button
+              key={opt.id}
+              type="button"
+              onClick={() => setMode(opt.id)}
+              disabled={starting}
+              className="rounded-xl border-[1.5px] p-3.5 text-left transition-colors"
+              style={{
+                borderColor: mode === opt.id ? "#2953c4" : "var(--color-line)",
+                background: mode === opt.id ? "#e8eef9" : "#fffdf8",
+              }}
+            >
+              <p className="text-sm font-semibold text-ink">{opt.title}</p>
+              <p className="mt-1 text-[12px] leading-snug text-ink-soft">{opt.blurb}</p>
+            </button>
+          ))}
         </div>
       </div>
 
@@ -408,11 +447,15 @@ function VivaTab({ stage }: { stage: StageTemplate }) {
 
       {error ? <ErrorBanner message={error} /> : null}
 
-      <Button onClick={begin} disabled={!primary || starting}>
+      <Button onClick={begin} disabled={(!primary && mode !== "drill") || starting}>
         {starting ? <Spinner /> : null}
         {starting
-          ? "The panel is reading your submission…"
-          : `Begin ${getSessionStyle(stage).label.toLowerCase()}`}
+          ? mode === "drill"
+            ? "Setting up the drill…"
+            : "The panel is reading your submission…"
+          : mode === "drill"
+            ? "Begin quick-fire drill"
+            : `Begin ${getSessionStyle(stage).label.toLowerCase()}`}
       </Button>
       {starting ? (
         <p className="text-xs text-ink-faint">

@@ -12,7 +12,13 @@ function describeSession(s: SessionRow): string {
   if (s.type !== "viva") return "Document review";
   const stage = findStage(s.stage_id);
   if (!stage) return `Session — ${s.stage_id}`;
-  return `${getSessionStyle(stage).label} — ${stage.title}`;
+  let isDrill = false;
+  try {
+    isDrill = (JSON.parse(s.config_json) as { mode?: string }).mode === "drill";
+  } catch {
+    // Old sessions predate config parsing edge cases — treat as full sessions.
+  }
+  return `${isDrill ? "Quick-fire drill" : getSessionStyle(stage).label} — ${stage.title}`;
 }
 
 export default function SessionsPage() {

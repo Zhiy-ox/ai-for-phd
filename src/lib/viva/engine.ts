@@ -43,8 +43,10 @@ export async function startVivaSession(opts: {
   documentIds: string[];
   model?: string;
   style?: PanelStyle;
+  mode?: "viva" | "drill";
 }): Promise<SessionRow> {
-  if (opts.documentIds.length === 0) {
+  const mode = opts.mode ?? "viva";
+  if (opts.documentIds.length === 0 && mode !== "drill") {
     throw new Error("A mock viva needs at least one document.");
   }
   const programmeId = getActiveProgrammeId();
@@ -54,13 +56,12 @@ export async function startVivaSession(opts: {
   }
   const { provider, model } = resolveProviderAndModel(opts);
   const documents = loadVivaDocuments(opts.documentIds);
-  const questionPlan = await generateQuestionPlan(
-    provider,
-    model,
-    stage,
-    documents[0].text,
-    opts.style?.focus,
-  );
+  // Drills skip the planner: they are cheap, fast, and steered by the
+  // weakness ledger instead of a prepared question map.
+  const questionPlan =
+    mode === "drill" || documents.length === 0
+      ? undefined
+      : await generateQuestionPlan(provider, model, stage, documents[0].text, opts.style?.focus);
   const config: VivaConfig = {
     programmeId,
     stageId: stage.id,
@@ -69,6 +70,7 @@ export async function startVivaSession(opts: {
     documentIds: opts.documentIds,
     questionPlan,
     style: opts.style,
+    mode,
   };
   return createSession({ type: "viva", stageId: stage.id, provider: provider.id, config });
 }
@@ -106,6 +108,7 @@ export async function* submitUtterance(
     documents,
     plan: config.questionPlan,
     style: config.style,
+    mode: config.mode,
     standingWeaknesses: listFindings({ programmeId: config.programmeId, stageId: stage.id, unresolved: true }).map((f) => ({
       description: f.description,
       evidence: f.evidence,

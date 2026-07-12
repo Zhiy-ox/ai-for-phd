@@ -18,6 +18,9 @@ export interface VivaConfig {
   documentIds: string[];
   questionPlan?: QuestionPlan;
   style?: PanelStyle;
+  // "viva" (default): full formal session. "drill": ~10-minute quick-fire
+  // practice — one examiner, short questions, prioritizes open weaknesses.
+  mode?: "viva" | "drill";
 }
 
 export interface QuestionPlan {

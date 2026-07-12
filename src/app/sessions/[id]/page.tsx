@@ -134,6 +134,14 @@ export default function VivaRoomPage() {
   }, [readAloud]);
   const scrollRef = useRef<HTMLDivElement>(null);
   const begunRef = useRef(false);
+  // Drill countdown: 10 minutes from entering the room, display only.
+  const [secondsLeft, setSecondsLeft] = useState(10 * 60);
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setSecondsLeft((s) => (s > 0 ? s - 1 : 0));
+    }, 1000);
+    return () => clearInterval(timer);
+  }, []);
 
   // Voice answers: finalized speech segments append to the composer.
   const {
@@ -281,6 +289,13 @@ export default function VivaRoomPage() {
   const live = liveText !== null ? splitSpeaker(liveText) : null;
   const existingReport = reports.find((r) => r.type === "viva_assessment");
   const rebuttalReport = reports.find((r) => r.type === "rebuttal_letter");
+  const isDrill = (() => {
+    try {
+      return (JSON.parse(session?.config_json ?? "{}") as { mode?: string }).mode === "drill";
+    } catch {
+      return false;
+    }
+  })();
   const supportsRebuttal = Boolean(
     findStage(session?.stage_id ?? "")?.activities.includes("rebuttal_roleplay"),
   );
@@ -300,6 +315,20 @@ export default function VivaRoomPage() {
           ))}
         </div>
         <div className="ml-auto flex items-center gap-2.5">
+          {isDrill && session.status === "active" ? (
+            <span
+              className="rounded-full px-3.5 py-2 font-mono text-[12.5px] tabular-nums"
+              style={{
+                border: `1px solid ${secondsLeft === 0 ? "rgba(226,96,79,0.6)" : "rgba(255,255,255,0.15)"}`,
+                color: secondsLeft === 0 ? "#e2604f" : secondsLeft < 120 ? "#f0d9a0" : "rgba(245,242,234,0.7)",
+              }}
+              title="Drill timer — a nudge, not a cutoff"
+            >
+              {secondsLeft === 0
+                ? "Time"
+                : `${Math.floor(secondsLeft / 60)}:${String(secondsLeft % 60).padStart(2, "0")}`}
+            </span>
+          ) : null}
           <button
             onClick={() => {
               setReadAloud((v) => {
@@ -372,7 +401,7 @@ export default function VivaRoomPage() {
       >
         <div className="mx-auto flex max-w-[640px] flex-col gap-5">
           <p className="text-center text-[11px] uppercase tracking-[0.18em]" style={{ color: "rgba(245,242,234,0.35)" }}>
-            {sessionTitle(session.stage_id)} · the panel has read your report
+            {isDrill ? `Quick-fire drill — ${findStage(session.stage_id)?.title ?? "practice"}` : `${sessionTitle(session.stage_id)} · the panel has read your report`}
           </p>
           {entries.length === 0 && streaming && !live ? (
             <div className="flex items-center gap-2 self-start text-sm" style={{ color: "rgba(245,242,234,0.5)" }}>

@@ -188,8 +188,15 @@ standing weaknesses.
   markdown textarea with Save / Download .md / live preview.
   NOT yet live-tested end-to-end (drafting spends quota) — the first real
   draft after an actual sparring run is the acceptance test.
-- **Phase D — backlog** (unordered): practice gym (timed quick-fire drills),
-  supervisor-facing PDF export, guided 3-step stage stepper (design spec has
+- ✅ **Practice gym — quick-fire drills** (Claude, 2026-07-11). Session
+  setup gains a mode toggle (full session / drill). Drills:
+  `VivaConfig.mode="drill"`, no document required, planner skipped, lead
+  persona alone asks 8 short questions with one-line verdict feedback,
+  prioritizing open ledger weaknesses; 10-minute display-only countdown in
+  the room; sessions list labels them. Assessments still run and adjudicate
+  standing weaknesses. NOT live-tested (quota) — first real drill is the
+  acceptance test.
+- **Phase D — backlog** (unordered): supervisor-facing PDF export, guided 3-step stage stepper (design spec has
   it; tabs work today), deadline countdowns on the milestone rail, usage-window
   meter for Pro plans, `docs/` landing page for GitHub Pages, mobile pass.
 

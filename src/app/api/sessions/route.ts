@@ -10,7 +10,8 @@ const SessionTypeSchema = z.enum(["viva", "doc_review"]);
 const CreateBodySchema = z.object({
   stageId: z.string().min(1),
   provider: z.enum(["claude", "codex"]).optional(),
-  documentIds: z.array(z.string().min(1)).min(1),
+  documentIds: z.array(z.string().min(1)),
+  mode: z.enum(["viva", "drill"]).optional(),
   style: z
     .object({
       intensity: z.enum(["supportive", "standard", "hostile"]),
@@ -52,6 +53,7 @@ export async function POST(request: Request): Promise<Response> {
       provider,
       documentIds: parsed.data.documentIds,
       style: parsed.data.style,
+      mode: parsed.data.mode,
       model: parsed.data.model,
     });
     return Response.json({ session });
