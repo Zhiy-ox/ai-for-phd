@@ -1,6 +1,6 @@
 import { getDb, newId, nowIso } from "../client";
 
-export type ReportType = "viva_assessment" | "doc_review";
+export type ReportType = "viva_assessment" | "doc_review" | "rebuttal_letter";
 
 export interface ReportRow {
   id: string;
@@ -68,4 +68,10 @@ export function listReports(filter?: {
   return getDb()
     .prepare(`SELECT * FROM reports ${where} ORDER BY created_at DESC`)
     .all(...values) as unknown as ReportRow[];
+}
+
+// For user-edited reports (e.g. rebuttal letters polished before sending).
+export function updateReportContent(id: string, contentMd: string): ReportRow | null {
+  getDb().prepare("UPDATE reports SET content_md = ? WHERE id = ?").run(contentMd, id);
+  return getReport(id);
 }

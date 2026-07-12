@@ -175,12 +175,19 @@ standing weaknesses.
 
 ## 5. Roadmap after Phase B
 
-- **Phase C — Rebuttal-letter drafter.** From an ended `papers` sparring
-  session + referee-report documents: one `completeOnce` → point-by-point
-  response letter (referee quote → response → manuscript change w/ location),
-  zod-validated, stored as a new report type `rebuttal_letter`, editable
-  textarea view, export .md. Files: `src/lib/rebuttal/`, route
-  `POST /api/sessions/[id]/rebuttal-letter`, button on ended papers sessions.
+- ✅ **Phase C — Rebuttal-letter drafter** (Claude, 2026-07-11). From an
+  ended sparring session on any `rebuttal_roleplay` stage:
+  `src/lib/rebuttal/run.ts` (`draftRebuttalLetter` — mines the manuscript,
+  the uploaded referee reports when present, and the sparring transcript;
+  `RebuttalLetterSchema` zod → `renderRebuttalMarkdown`), stored as report
+  type `rebuttal_letter`. Routes: `POST /api/sessions/[id]/rebuttal-letter`
+  → `{reportId}`; `PATCH /api/reports/[id]` `{contentMd}` saves user edits
+  (`updateReportContent`). UI: gold "Draft rebuttal letter" button in the
+  viva-room bench for ended rebuttal sessions (→ "View rebuttal letter" once
+  drafted); report page renders `rebuttal_letter` as an editable
+  markdown textarea with Save / Download .md / live preview.
+  NOT yet live-tested end-to-end (drafting spends quota) — the first real
+  draft after an actual sparring run is the acceptance test.
 - **Phase D — backlog** (unordered): practice gym (timed quick-fire drills),
   supervisor-facing PDF export, guided 3-step stage stepper (design spec has
   it; tabs work today), deadline countdowns on the milestone rail, usage-window

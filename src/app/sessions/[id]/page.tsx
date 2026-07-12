@@ -124,6 +124,7 @@ export default function VivaRoomPage() {
   const [streaming, setStreaming] = useState(false);
   const [concluded, setConcluded] = useState(false);
   const [assessing, setAssessing] = useState(false);
+  const [drafting, setDrafting] = useState(false);
   const [error, setError] = useState<{ message: string; hint?: string } | null>(null);
   const [input, setInput] = useState("");
   const [readAloud, setReadAloud] = useState(false);
@@ -253,6 +254,21 @@ export default function VivaRoomPage() {
     }
   }
 
+  async function draftLetter() {
+    setDrafting(true);
+    setError(null);
+    try {
+      const { reportId } = await apiSend<{ reportId: string }>(
+        `/api/sessions/${sessionId}/rebuttal-letter`,
+        "POST",
+      );
+      router.push(`/reports/${reportId}`);
+    } catch (err) {
+      setError({ message: messageOf(err) });
+      setDrafting(false);
+    }
+  }
+
   if (!session && !error) return <PageLoading label="Entering the viva room…" />;
   if (!session) {
     return (
@@ -264,6 +280,10 @@ export default function VivaRoomPage() {
 
   const live = liveText !== null ? splitSpeaker(liveText) : null;
   const existingReport = reports.find((r) => r.type === "viva_assessment");
+  const rebuttalReport = reports.find((r) => r.type === "rebuttal_letter");
+  const supportsRebuttal = Boolean(
+    findStage(session?.stage_id ?? "")?.activities.includes("rebuttal_roleplay"),
+  );
   const canSpeak = session.status === "active" && !concluded && !assessing;
   const panel = panelFor(session.stage_id);
 
@@ -301,6 +321,27 @@ export default function VivaRoomPage() {
             </svg>
             Read aloud {readAloud ? "on" : "off"}
           </button>
+          {supportsRebuttal && session.status === "ended" ? (
+            rebuttalReport ? (
+              <Link
+                href={`/reports/${rebuttalReport.id}`}
+                className="rounded-full px-4.5 py-2 text-[12.5px] font-medium"
+                style={{ border: "1px solid rgba(240,217,160,0.35)", color: "#f0d9a0" }}
+              >
+                View rebuttal letter →
+              </Link>
+            ) : (
+              <button
+                onClick={draftLetter}
+                disabled={drafting || entries.length === 0}
+                className="flex items-center gap-2 rounded-full px-4.5 py-2 text-[12.5px] font-medium transition-colors disabled:opacity-50"
+                style={{ border: "1px solid rgba(240,217,160,0.35)", color: "#f0d9a0" }}
+              >
+                {drafting ? <Spinner className="h-3.5 w-3.5" /> : null}
+                {drafting ? "Drafting your letter…" : "Draft rebuttal letter"}
+              </button>
+            )
+          ) : null}
           {existingReport ? (
             <Link
               href={`/reports/${existingReport.id}`}

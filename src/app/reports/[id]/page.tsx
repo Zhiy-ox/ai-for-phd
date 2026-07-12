@@ -9,9 +9,9 @@ import type { ProgrammeTemplate } from "@/lib/template";
 import type { VivaAssessment } from "@/lib/viva/types";
 import type { DocReviewResult, DocReviewSection } from "@/lib/review/types";
 import { findPreviousDocReview, parseDocReviewResult } from "@/lib/review/score-deltas";
-import { apiGet, formatDate, formatDateTime, messageOf } from "@/components/api";
+import { apiGet, apiSend, formatDate, formatDateTime, messageOf } from "@/components/api";
 import { Markdown } from "@/components/markdown";
-import { Card, Chip, ErrorBanner, PageLoading, SectionLabel } from "@/components/ui";
+import { Button, Card, Chip, ErrorBanner, PageLoading, SectionLabel, Spinner } from "@/components/ui";
 
 function parseRubric<T>(report: ReportRow): T | null {
   if (!report.rubric_json) return null;
@@ -325,6 +325,70 @@ function DocReviewView({
 /* Page                                                                */
 /* ------------------------------------------------------------------ */
 
+/* ------------------------------------------------------------------ */
+/* Rebuttal letter — editable before sending                           */
+/* ------------------------------------------------------------------ */
+
+function RebuttalLetterView({ report }: { report: ReportRow }) {
+  const [content, setContent] = useState(report.content_md);
+  const [savedContent, setSavedContent] = useState(report.content_md);
+  const [saving, setSaving] = useState(false);
+  const [savedAt, setSavedAt] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const dirty = content !== savedContent && content.trim().length > 0;
+
+  async function save() {
+    setSaving(true);
+    setError(null);
+    try {
+      await apiSend(`/api/reports/${report.id}`, "PATCH", { contentMd: content });
+      setSavedContent(content);
+      setSavedAt(new Date().toLocaleTimeString());
+    } catch (err) {
+      setError(messageOf(err));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  function download() {
+    const blob = new Blob([content], { type: "text/markdown" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "response-to-reviewers.md";
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  return (
+    <div className="space-y-5">
+      <div className="flex flex-wrap items-center gap-2">
+        <Button onClick={save} disabled={!dirty || saving}>
+          {saving ? <Spinner /> : null} Save edits
+        </Button>
+        <Button variant="secondary" onClick={download}>
+          Download .md
+        </Button>
+        {savedAt ? <span className="text-xs text-ink-faint">Saved {savedAt}</span> : null}
+      </div>
+      {error ? <ErrorBanner message={error} /> : null}
+      <textarea
+        value={content}
+        onChange={(e) => setContent(e.target.value)}
+        rows={24}
+        className="w-full rounded-2xl border border-line bg-card p-5 font-mono text-[13px] leading-relaxed text-ink focus:border-oxford focus:outline-none"
+      />
+      <Card className="p-6">
+        <SectionLabel>Preview</SectionLabel>
+        <div className="mt-3">
+          <Markdown>{content}</Markdown>
+        </div>
+      </Card>
+    </div>
+  );
+}
+
 export default function ReportPage() {
   const params = useParams<{ id: string }>();
   const [report, setReport] = useState<ReportRow | null>(null);
@@ -361,7 +425,7 @@ export default function ReportPage() {
 
   const isViva = report.type === "viva_assessment";
   const assessment = isViva ? parseRubric<VivaAssessment>(report) : null;
-  const review = !isViva ? parseDocReviewResult(report) : null;
+  const review = !isViva && report.type === "doc_review" ? parseDocReviewResult(report) : null;
   const comparison = reviewComparison?.reportId === report.id ? reviewComparison : null;
 
   return (
@@ -375,13 +439,19 @@ export default function ReportPage() {
       <header className="mb-6 mt-3">
         <div className="flex flex-wrap items-center gap-3">
           <h1 className="font-display text-[32px] font-normal text-ink">
-            {isViva ? "Viva assessment report" : "Document review"}
+            {isViva
+              ? "Viva assessment report"
+              : report.type === "rebuttal_letter"
+                ? "Response to reviewers"
+                : "Document review"}
           </h1>
         </div>
         <p className="mt-1 text-xs text-ink-faint">{formatDateTime(report.created_at)}</p>
       </header>
 
-      {isViva && assessment ? (
+      {report.type === "rebuttal_letter" ? (
+        <RebuttalLetterView report={report} />
+      ) : isViva && assessment ? (
         <VivaAssessmentView report={report} assessment={assessment} programme={programme} />
       ) : !isViva && review ? (
         <DocReviewView review={review} programme={programme} comparison={comparison} />

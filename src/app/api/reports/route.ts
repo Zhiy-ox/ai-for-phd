@@ -3,7 +3,7 @@ import { listReports, type ReportType } from "@/lib/db/repos/reports";
 
 export const dynamic = "force-dynamic";
 
-const ReportTypeSchema = z.enum(["viva_assessment", "doc_review"]);
+const ReportTypeSchema = z.enum(["viva_assessment", "doc_review", "rebuttal_letter"]);
 
 export async function GET(request: Request): Promise<Response> {
   try {
