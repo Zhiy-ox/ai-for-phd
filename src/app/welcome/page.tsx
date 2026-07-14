@@ -68,7 +68,7 @@ export default function WelcomePage() {
       <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-ink-faint">
         Welcome · set up once, change anytime
       </p>
-      <h1 className="mt-2.5 font-display text-[34px] font-normal leading-tight text-ink">
+      <h1 className="anim-rise mt-2.5 font-display text-[34px] font-normal leading-tight text-ink">
         Let&apos;s set up your doctorate.
       </h1>
 
@@ -87,7 +87,7 @@ export default function WelcomePage() {
       </div>
 
       {step === "backends" ? (
-        <section className="mt-8">
+        <section key="backends" className="anim-rise-sm mt-8">
           <h2 className="font-display text-xl text-ink">Your AI backends</h2>
           <p className="mt-2 text-sm leading-relaxed text-ink-soft">
             AI for PhD uses no API keys. The assessor panels run on subscriptions you
@@ -134,7 +134,7 @@ export default function WelcomePage() {
       ) : null}
 
       {step === "programme" ? (
-        <section className="mt-8">
+        <section key="programme" className="anim-rise-sm mt-8">
           <h2 className="font-display text-xl text-ink">Your programme</h2>
           <p className="mt-2 text-sm leading-relaxed text-ink-soft">
             This sets the stages, gate names, and examiner panels. Pick the closest —
@@ -151,7 +151,7 @@ export default function WelcomePage() {
                     setProgrammeId(p.id);
                     setStageId(null);
                   }}
-                  className="w-full rounded-xl border-[1.5px] px-4 py-3.5 text-left transition-colors"
+                  className="w-full rounded-xl border-[1.5px] px-4 py-3.5 text-left transition-all hover:-translate-y-px active:scale-[0.99]"
                   style={{
                     borderColor: selected ? "#2953c4" : "#e5e0d2",
                     background: selected ? "#e8eef9" : "#fffdf8",
@@ -178,7 +178,7 @@ export default function WelcomePage() {
       ) : null}
 
       {step === "stage" && programme ? (
-        <section className="mt-8">
+        <section key="stage" className="anim-rise-sm mt-8">
           <h2 className="font-display text-xl text-ink">Where are you now?</h2>
           <p className="mt-2 text-sm leading-relaxed text-ink-soft">
             Earlier stages are marked complete, later ones upcoming. Nothing has to
@@ -191,7 +191,7 @@ export default function WelcomePage() {
                 <button
                   key={s.id}
                   onClick={() => setStageId(s.id)}
-                  className="flex w-full items-center gap-3 rounded-xl border-[1.5px] px-4 py-3 text-left transition-colors"
+                  className="flex w-full items-center gap-3 rounded-xl border-[1.5px] px-4 py-3 text-left transition-all hover:-translate-y-px active:scale-[0.99]"
                   style={{
                     borderColor: selected ? "#2953c4" : "#e5e0d2",
                     background: selected ? "#e8eef9" : "#fffdf8",

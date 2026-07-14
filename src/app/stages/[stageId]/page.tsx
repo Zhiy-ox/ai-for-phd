@@ -23,15 +23,18 @@ import { KindBadge, ProviderBadge, StageStatusChip } from "@/components/status-c
 import { ProviderPicker } from "@/components/provider-picker";
 import { UploadDropzone } from "@/components/upload-dropzone";
 import {
+  Burst,
   Button,
   Card,
   Chip,
   EmptyState,
   ErrorBanner,
+  GuideSteps,
   PageLoading,
   SectionLabel,
   Spinner,
 } from "@/components/ui";
+import type { CSSProperties } from "react";
 
 interface ProgrammeResponse {
   programme: ProgrammeTemplate;
@@ -191,9 +194,9 @@ function DocumentsTab({ stage }: { stage: StageTemplate }) {
         />
       ) : (
         <ul className="space-y-2">
-          {docs.map((doc) => (
-            <li key={doc.id}>
-              <Card className="flex flex-wrap items-center gap-3 p-4">
+          {docs.map((doc, i) => (
+            <li key={doc.id} className="anim-rise-sm" style={{ "--d": `${i * 60}ms` } as CSSProperties}>
+              <Card className="flex flex-wrap items-center gap-3 p-4 transition-shadow hover:shadow-md">
                 <Link
                   href={`/documents/${doc.id}`}
                   className="font-medium text-oxford hover:underline"
@@ -293,8 +296,12 @@ function VivaTab({ stage }: { stage: StageTemplate }) {
       <Card className="p-5">
         <SectionLabel>Your panel</SectionLabel>
         <div className="mt-3 grid gap-4 sm:grid-cols-2">
-          {panel.map((p) => (
-            <div key={p.id} className="rounded-lg bg-oxford-faint p-4">
+          {panel.map((p, i) => (
+            <div
+              key={p.id}
+              className="anim-rise-sm rounded-lg bg-oxford-faint p-4"
+              style={{ "--d": `${i * 90}ms` } as CSSProperties}
+            >
               <p className="font-display text-base text-oxford">{p.name}</p>
               <p className="text-xs uppercase tracking-wide text-ink-faint">{p.role}</p>
               <p className="mt-2 text-sm leading-relaxed text-ink-soft">{p.style}</p>
@@ -332,10 +339,11 @@ function VivaTab({ stage }: { stage: StageTemplate }) {
               type="button"
               onClick={() => setMode(opt.id)}
               disabled={starting}
-              className="rounded-xl border-[1.5px] p-3.5 text-left transition-colors"
+              className="rounded-xl border-[1.5px] p-3.5 text-left transition-all hover:-translate-y-0.5 hover:shadow-[0_14px_28px_-20px_rgba(10,22,38,0.5)] active:translate-y-0 active:scale-[0.98]"
               style={{
                 borderColor: mode === opt.id ? "#2953c4" : "var(--color-line)",
                 background: mode === opt.id ? "#e8eef9" : "#fffdf8",
+                boxShadow: mode === opt.id ? "0 10px 24px -18px rgba(41,83,196,0.6)" : undefined,
               }}
             >
               <p className="text-sm font-semibold text-ink">{opt.title}</p>
@@ -372,10 +380,11 @@ function VivaTab({ stage }: { stage: StageTemplate }) {
               type="button"
               onClick={() => setIntensity(opt.id)}
               disabled={starting}
-              className="rounded-xl border-[1.5px] p-3.5 text-left transition-colors"
+              className="rounded-xl border-[1.5px] p-3.5 text-left transition-all hover:-translate-y-0.5 hover:shadow-[0_14px_28px_-20px_rgba(10,22,38,0.5)] active:translate-y-0 active:scale-[0.98]"
               style={{
                 borderColor: intensity === opt.id ? "#2953c4" : "var(--color-line)",
                 background: intensity === opt.id ? "#e8eef9" : "#fffdf8",
+                boxShadow: intensity === opt.id ? "0 10px 24px -18px rgba(41,83,196,0.6)" : undefined,
               }}
             >
               <p className="text-sm font-semibold text-ink">{opt.title}</p>
@@ -458,7 +467,7 @@ function VivaTab({ stage }: { stage: StageTemplate }) {
             : `Begin ${getSessionStyle(stage).label.toLowerCase()}`}
       </Button>
       {starting ? (
-        <p className="text-xs text-ink-faint">
+        <p className="anim-rise-sm animate-pulse text-xs text-ink-faint">
           The assessors are preparing a question plan from your report — this takes a
           minute or so.
         </p>
@@ -474,6 +483,8 @@ function VivaTab({ stage }: { stage: StageTemplate }) {
 function WeaknessLedger({ stage }: { stage: StageTemplate }) {
   const [findings, setFindings] = useState<FindingRow[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // A just-resolved item celebrates and slides out before the list reloads.
+  const [resolvingId, setResolvingId] = useState<string | null>(null);
 
   const load = useCallback(() => {
     apiGet<{ findings: FindingRow[] }>(`/api/findings?stageId=${stage.id}`)
@@ -484,9 +495,19 @@ function WeaknessLedger({ stage }: { stage: StageTemplate }) {
 
   async function setStatus(id: string, status: FindingStatus) {
     try {
+      if (status === "resolved") {
+        setResolvingId(id);
+        await apiSend(`/api/findings/${id}`, "PATCH", { status });
+        setTimeout(() => {
+          setResolvingId(null);
+          load();
+        }, 750);
+        return;
+      }
       await apiSend(`/api/findings/${id}`, "PATCH", { status });
       load();
     } catch (e) {
+      setResolvingId(null);
       setError(messageOf(e));
     }
   }
@@ -509,26 +530,43 @@ function WeaknessLedger({ stage }: { stage: StageTemplate }) {
         </p>
       ) : (
         <ul className="mt-2 space-y-2">
-          {open.map((f) => (
-            <li
-              key={f.id}
-              className="flex flex-wrap items-start gap-3 rounded-xl border px-4 py-3"
-              style={{ borderColor: "rgba(168,132,60,0.35)", background: "#faf7ef" }}
-            >
-              <div className="min-w-[220px] flex-1">
-                <p className="text-sm leading-snug text-ink">{f.description}</p>
-                {f.evidence ? (
-                  <p className="mt-1 text-xs italic text-ink-faint">“{f.evidence}”</p>
-                ) : null}
-              </div>
-              <span className="flex items-center gap-2">
-                <Chip tone={f.status === "improving" ? "green" : "amber"}>{f.status}</Chip>
-                <Button variant="secondary" onClick={() => setStatus(f.id, "resolved")}>
-                  Resolve
-                </Button>
-              </span>
-            </li>
-          ))}
+          {open.map((f, i) => {
+            const resolving = resolvingId === f.id;
+            return (
+              <li
+                key={f.id}
+                className="anim-rise-sm relative flex flex-wrap items-start gap-3 rounded-xl border px-4 py-3 transition-all duration-700"
+                style={
+                  {
+                    "--d": `${i * 60}ms`,
+                    borderColor: resolving ? "rgba(46,184,122,0.6)" : "rgba(168,132,60,0.35)",
+                    background: resolving ? "#eafaf2" : "#faf7ef",
+                    opacity: resolving ? 0 : 1,
+                    transform: resolving ? "translateX(28px) scale(0.97)" : undefined,
+                    transitionDelay: resolving ? "0.25s" : undefined,
+                  } as CSSProperties
+                }
+              >
+                {resolving ? <Burst /> : null}
+                <div className="min-w-[220px] flex-1">
+                  <p className="text-sm leading-snug text-ink">{f.description}</p>
+                  {f.evidence ? (
+                    <p className="mt-1 text-xs italic text-ink-faint">“{f.evidence}”</p>
+                  ) : null}
+                </div>
+                <span className="flex items-center gap-2">
+                  <Chip tone={f.status === "improving" ? "green" : "amber"}>{f.status}</Chip>
+                  <Button
+                    variant="secondary"
+                    disabled={resolvingId !== null}
+                    onClick={() => setStatus(f.id, "resolved")}
+                  >
+                    {resolving ? "Resolved ✓" : "Resolve"}
+                  </Button>
+                </span>
+              </li>
+            );
+          })}
         </ul>
       )}
       {resolved.length > 0 && open.length > 0 ? (
@@ -581,8 +619,16 @@ function ReportsTab({ stage }: { stage: StageTemplate }) {
         <WeaknessLedger stage={stage} />
         <EmptyState
           title="No reports yet"
-          hint="Run a document review or complete a mock viva and the assessment reports will collect here."
-        />
+          hint="Assessment reports collect here as you work the loop:"
+        >
+          <GuideSteps
+            steps={[
+              "Upload your draft in the Documents tab.",
+              "Press “Get feedback” — a rubric-scored review lands here.",
+              "Face the panel — the viva assessment and its weakness ledger follow.",
+            ]}
+          />
+        </EmptyState>
       </div>
     );
   }
@@ -591,10 +637,10 @@ function ReportsTab({ stage }: { stage: StageTemplate }) {
     <div>
       <WeaknessLedger stage={stage} />
       <ul className="space-y-2">
-      {rows.map(({ report, session }) => (
-        <li key={report.id}>
+      {rows.map(({ report, session }, i) => (
+        <li key={report.id} className="anim-rise-sm" style={{ "--d": `${i * 60}ms` } as CSSProperties}>
           <Link href={`/reports/${report.id}`} className="block">
-            <Card className="flex flex-wrap items-center gap-3 p-4 transition-shadow hover:shadow-md">
+            <Card className="flex flex-wrap items-center gap-3 p-4 transition-all hover:-translate-y-px hover:shadow-md">
               <span className="font-medium text-oxford">
                 {report.type === "viva_assessment" ? "Viva assessment" : "Document review"}
               </span>
@@ -664,7 +710,7 @@ export default function StagePage() {
       <Link href="/" className="text-sm text-ink-faint hover:text-oxford">
         ← Journey
       </Link>
-      <header className="mb-6 mt-3">
+      <header className="anim-rise mb-6 mt-3">
         <div className="flex flex-wrap items-center gap-3">
           <h1 className="font-display text-[38px] font-normal text-ink">{stage.title}</h1>
           {instance ? <StageStatusChip status={instance.status} /> : null}
@@ -676,7 +722,7 @@ export default function StagePage() {
         </p>
       </header>
 
-      <div className="mb-6">
+      <div className="anim-rise mb-6" style={{ "--d": "80ms" } as CSSProperties}>
         <StageHeader stage={stage} instance={instance} onSaved={setInstanceOverride} />
       </div>
 
@@ -697,9 +743,12 @@ export default function StagePage() {
               </button>
             ))}
           </div>
-          {tab === "documents" ? <DocumentsTab stage={stage} /> : null}
-          {tab === "viva" ? <VivaTab stage={stage} /> : null}
-          {tab === "reports" ? <ReportsTab stage={stage} /> : null}
+          {/* Keyed on the tab so every switch re-runs the entrance animation. */}
+          <div key={tab} className="anim-rise-sm">
+            {tab === "documents" ? <DocumentsTab stage={stage} /> : null}
+            {tab === "viva" ? <VivaTab stage={stage} /> : null}
+            {tab === "reports" ? <ReportsTab stage={stage} /> : null}
+          </div>
         </>
       ) : (
         <EmptyState

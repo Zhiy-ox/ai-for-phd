@@ -2,14 +2,14 @@
 
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type CSSProperties } from "react";
 import type { MessageRow, SessionRow } from "@/lib/db/repos/sessions";
 import type { ReportRow } from "@/lib/db/repos/reports";
 import { findStage, getSessionStyle } from "@/lib/template";
 import { apiGet, apiSend, messageOf } from "@/components/api";
 import { streamSessionEvents } from "@/components/use-sse-stream";
 import { cancelSpeech, speakAloud, useSpeechRecognition } from "@/components/use-speech";
-import { ErrorBanner, PageLoading, Spinner } from "@/components/ui";
+import { ErrorBanner, PageLoading, Spinner, TypingDots } from "@/components/ui";
 
 interface SessionResponse {
   session: SessionRow;
@@ -62,13 +62,20 @@ function PanelBubble({
         className="whitespace-pre-wrap rounded-2xl rounded-tl-sm px-5 py-4 font-display text-[16.5px] leading-relaxed"
         style={{ background: "#f5f2ea", color: "#16202e", boxShadow: "0 12px 30px -18px rgba(0,0,0,0.6)" }}
       >
-        {text}
-        {streaming ? (
-          <span
-            className="ml-0.5 inline-block h-4 w-0.5 align-[-2px]"
-            style={{ background: "#2953c4", animation: "blink 0.9s step-end infinite" }}
-          />
-        ) : null}
+        {streaming && text.length === 0 ? (
+          // The examiner is thinking — no words yet.
+          <TypingDots className="py-1 text-oxford" />
+        ) : (
+          <>
+            {text}
+            {streaming ? (
+              <span
+                className="ml-0.5 inline-block h-4 w-0.5 align-[-2px]"
+                style={{ background: "#2953c4", animation: "blink 0.9s step-end infinite" }}
+              />
+            ) : null}
+          </>
+        )}
       </div>
     </div>
   );
@@ -310,8 +317,10 @@ export default function VivaRoomPage() {
       {/* Panel bench */}
       <div className="flex flex-wrap items-center gap-3.5 pb-5">
         <div className="flex flex-wrap gap-2.5">
-          {panel.map((p) => (
-            <BenchChip key={p.id} name={p.name} role={p.role} />
+          {panel.map((p, i) => (
+            <div key={p.id} className="anim-rise-sm" style={{ "--d": `${i * 120}ms` } as CSSProperties}>
+              <BenchChip name={p.name} role={p.role} />
+            </div>
           ))}
         </div>
         <div className="ml-auto flex items-center gap-2.5">
@@ -321,6 +330,9 @@ export default function VivaRoomPage() {
               style={{
                 border: `1px solid ${secondsLeft === 0 ? "rgba(226,96,79,0.6)" : "rgba(255,255,255,0.15)"}`,
                 color: secondsLeft === 0 ? "#e2604f" : secondsLeft < 120 ? "#f0d9a0" : "rgba(245,242,234,0.7)",
+                // Final minute: the chip's border throbs toward red.
+                animation:
+                  secondsLeft > 0 && secondsLeft < 60 ? "urgentPulse 1s ease-in-out infinite" : undefined,
               }}
               title="Drill timer — a nudge, not a cutoff"
             >
@@ -404,8 +416,11 @@ export default function VivaRoomPage() {
             {isDrill ? `Quick-fire drill — ${findStage(session.stage_id)?.title ?? "practice"}` : `${sessionTitle(session.stage_id)} · the panel has read your report`}
           </p>
           {entries.length === 0 && streaming && !live ? (
-            <div className="flex items-center gap-2 self-start text-sm" style={{ color: "rgba(245,242,234,0.5)" }}>
-              <Spinner className="h-4 w-4" /> The panel is settling in…
+            <div
+              className="anim-rise-sm flex items-center gap-2.5 self-start text-sm"
+              style={{ color: "rgba(245,242,234,0.5)" }}
+            >
+              <TypingDots className="text-[#f0d9a0]" /> The panel is settling in…
             </div>
           ) : null}
           {entries.map((e) =>
@@ -420,7 +435,7 @@ export default function VivaRoomPage() {
           ) : null}
           {concluded ? (
             <div
-              className="mx-auto mt-2 rounded-xl px-6 py-3.5 text-center"
+              className="anim-pop mx-auto mt-2 rounded-xl px-6 py-3.5 text-center"
               style={{ border: "1px solid rgba(240,217,160,0.3)" }}
             >
               <p className="font-display text-[16px] italic" style={{ color: "#f0d9a0" }}>
@@ -521,7 +536,7 @@ export default function VivaRoomPage() {
           <button
             onClick={send}
             disabled={!canSpeak || streaming || input.trim() === ""}
-            className="flex h-11 flex-none items-center gap-2 rounded-xl px-5.5 text-[13.5px] font-semibold text-white transition-colors disabled:opacity-50"
+            className="flex h-11 flex-none items-center gap-2 rounded-xl px-5.5 text-[13.5px] font-semibold text-white transition-all active:scale-[0.96] disabled:opacity-50"
             style={{ background: "#2953c4", boxShadow: "0 10px 24px -12px rgba(41,83,196,0.8)" }}
           >
             {streaming ? (

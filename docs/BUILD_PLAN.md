@@ -106,6 +106,7 @@ src/
 | Programme presets + wizard | ✅ | oxford-dphil / generic-uk-phd / us-phd; `/welcome` first-run wizard; `settings.programme_id`; Settings programme card |
 | Examiner styles | ✅ | `PanelStyle` (supportive/standard/hostile + focus) → planner & panel prompts; picker in session setup |
 | Open-source release | ✅ | MIT LICENSE, product README, repo public with topics |
+| Motion & first-run guidance | ✅ | `anim-*` entrance utilities + celebration `Burst`/`TypingDots`/`AnimatedCheck` (ui.tsx), staggered page/tab/list transitions everywhere, weakness-resolve & pass-verdict celebrations, dashboard coach-mark tour (`coach-tour.tsx`) + guided empty states |
 | Tests | ✅ | 76 vitest tests: extraction (fixtures incl. hand-built PDF), provider event mapping, JSON parse/retry, template validation, findings, score-delta selection |
 
 ---
@@ -196,7 +197,28 @@ standing weaknesses.
   the room; sessions list labels them. Assessments still run and adjudicate
   standing weaknesses. NOT live-tested (quota) — first real drill is the
   acceptance test.
-### Future roadmap (added 2026-07-11)
+- ✅ **UX motion & first-run guidance** (Claude, 2026-07-14; owner directive).
+  (a) *Motion system*: keyframes (`popIn`, `typingDot`, `burstFly`,
+  `drawCheck`, `sparkPulse`, `urgentPulse`) + reusable `.anim-rise/-sm`,
+  `.anim-fade`, `.anim-pop` classes with a `--d` stagger var in
+  `globals.css`; all animations honor `prefers-reduced-motion`. Applied as
+  staggered entrances on dashboard/stage/sessions/welcome/report screens,
+  keyed tab-switch transitions, hover-lift + press-scale on buttons and
+  option cards. (b) *Delight*: `TypingDots` while the panel thinks (empty
+  streamed bubble + settling-in state), `Burst` particle celebration on
+  weakness Resolve (green flash → slide-out) and on passing verdict banners
+  (`PASS_VERDICTS`; also fixed non-Oxford verdicts like `pass` rendering
+  red), `AnimatedCheck` draw-in checkmarks for readiness, drill-countdown
+  border throb in the final minute, milestone-rail spark pulse. (c) *First
+  run*: `src/components/coach-tour.tsx` — spotlight coach-mark tour on the
+  dashboard (`data-tour` targets; steps auto-skip when a target is absent;
+  Esc/arrow keys; clamped `window.scrollTo`, NOT `scrollIntoView`, which
+  overshoots), auto-opens once (`localStorage aiphd-tour-done`), replayable
+  from the footer; `GuideSteps` numbered walkthroughs in the Reports-tab and
+  Sessions empty states. Verified live: tour geometry, persistence, replay;
+  stage tabs; review scorecard growBar.
+
+### Future roadmap (added 2026-07-11) — the next-gen todo list
 
 **M0 — Validation sprint (owner-led; before building more).** Run the real
 thing: actual transfer draft → rubric review → full mock viva → assessment →

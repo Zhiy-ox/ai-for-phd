@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useState, type CSSProperties } from "react";
 import { getSessionStyle, type ProgrammeTemplate, type StageTemplate } from "@/lib/template";
 import type { StageInstance, StageStatus } from "@/lib/db/repos/stage-instances";
 import type { DocumentSummary } from "@/lib/db/repos/documents";
@@ -11,7 +11,8 @@ import type { ReportRow } from "@/lib/db/repos/reports";
 import type { FindingRow } from "@/lib/db/repos/findings";
 import type { AppSettings } from "@/lib/db/repos/settings";
 import { apiGet, apiSend, formatDate, messageOf } from "@/components/api";
-import { ErrorBanner, PageLoading } from "@/components/ui";
+import { AnimatedCheck, ErrorBanner, PageLoading } from "@/components/ui";
+import { CoachTour, TOUR_DONE_KEY, type TourStep } from "@/components/coach-tour";
 
 interface ProgrammeResponse {
   programme: ProgrammeTemplate;
@@ -27,6 +28,36 @@ interface StageInfo {
 }
 
 const ROMAN = ["I", "II", "III", "IV", "V", "VI", "VII", "VIII"];
+
+// First-visit walkthrough. Steps whose data-tour target isn't on the page
+// (e.g. no open weaknesses yet) are skipped automatically.
+const TOUR_STEPS: TourStep[] = [
+  {
+    id: "rail",
+    title: "Your whole doctorate, on one line",
+    body: "Every formal gate of the programme, in order. Click any milestone to make it the stage you're working on — nothing has to happen in sequence.",
+  },
+  {
+    id: "next-move",
+    title: "Never wonder what to do next",
+    body: "The app always names exactly one next action for your current gate: upload a draft, get feedback, or face the panel. When in doubt, press this button.",
+  },
+  {
+    id: "readiness",
+    title: "Three checks to gate-ready",
+    body: "Document in, feedback in hand, panel faced. When all three light up green, you've rehearsed the gate end-to-end — before it counts.",
+  },
+  {
+    id: "weaknesses",
+    title: "The panel remembers",
+    body: "Weaknesses found in feedback and mock vivas are kept on a ledger, and every future panel re-attacks them until you've closed them out.",
+  },
+  {
+    id: "journey",
+    title: "Jump anywhere, any time",
+    body: "The full journey lives down here. Use “Work on this now” to switch stages — papers and rebuttals run alongside everything else.",
+  },
+];
 
 // The numbered gates — everything except the recurring Papers & Rebuttals.
 function gateStages(programme: ProgrammeTemplate): StageTemplate[] {
@@ -133,7 +164,7 @@ function MilestoneRail({
   const currentIdx = Math.max(0, gates.findIndex((s) => s.id === currentId));
   const fill = gates.length > 1 ? (currentIdx / (gates.length - 1)) * 100 : 0;
   return (
-    <div className="mt-12">
+    <div className="mt-12" data-tour="rail">
       <div className="relative h-0.5 rounded-full" style={{ background: "#e5e0d2" }}>
         <div
           className="absolute inset-y-0 left-0 rounded-full transition-all duration-700"
@@ -141,7 +172,11 @@ function MilestoneRail({
         />
         <span
           className="absolute top-1/2 h-2 w-2 -translate-x-1/2 -translate-y-1/2 rounded-full transition-all duration-700"
-          style={{ left: `${fill}%`, background: "#2953c4", boxShadow: "0 0 0 4px rgba(41,83,196,0.15)" }}
+          style={{
+            left: `${fill}%`,
+            background: "#2953c4",
+            animation: "sparkPulse 2.4s ease-in-out infinite",
+          }}
         />
       </div>
       <div className="mt-[-9px] grid" style={{ gridTemplateColumns: `repeat(${gates.length},1fr)` }}>
@@ -152,7 +187,7 @@ function MilestoneRail({
           return (
             <div key={stage.id} className="flex flex-col items-start gap-2.5">
               <span
-                className="flex h-4 w-4 items-center justify-center rounded-full border-2 box-border"
+                className="flex h-4 w-4 items-center justify-center rounded-full border-2 box-border transition-colors duration-500"
                 style={{
                   borderColor: done ? "#2eb87a" : isCurrent ? "#2953c4" : "#d8d2c2",
                   background: done ? "#2eb87a" : isCurrent ? "#fffdf8" : "#f5f2ea",
@@ -251,7 +286,11 @@ function HeroCurrentStage({
             {stage.description}
           </p>
 
-          <div className="mt-6 flex items-center gap-4 rounded-2xl px-5 py-4" style={{ background: "#0a1626" }}>
+          <div
+            className="mt-6 flex items-center gap-4 rounded-2xl px-5 py-4"
+            style={{ background: "#0a1626" }}
+            data-tour="next-move"
+          >
             <div className="flex-1">
               <p className="text-[10.5px] font-semibold uppercase tracking-[0.18em]" style={{ color: "rgba(240,217,160,0.8)" }}>
                 Your next move
@@ -262,11 +301,15 @@ function HeroCurrentStage({
             </div>
             <Link
               href={move.href}
-              className="flex flex-none items-center gap-2 rounded-xl px-5 py-3 text-sm font-semibold text-white transition-transform hover:-translate-y-0.5"
+              className="group flex flex-none items-center gap-2 rounded-xl px-5 py-3 text-sm font-semibold text-white transition-all hover:-translate-y-0.5 active:translate-y-0 active:scale-[0.97]"
               style={{ background: "#2953c4", boxShadow: "0 10px 24px -10px rgba(41,83,196,0.7)" }}
             >
               {move.cta}
-              <svg viewBox="0 0 16 16" fill="none" className="h-3.5 w-3.5">
+              <svg
+                viewBox="0 0 16 16"
+                fill="none"
+                className="h-3.5 w-3.5 transition-transform group-hover:translate-x-0.5"
+              >
                 <path d="M2.5 8h10.5M9.5 4.5 13 8l-3.5 3.5" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" />
               </svg>
             </Link>
@@ -274,8 +317,9 @@ function HeroCurrentStage({
 
           {info && info.findings.length > 0 ? (
             <div
-              className="mt-3 rounded-lg border px-4 py-3"
+              className="anim-rise-sm mt-3 rounded-lg border px-4 py-3"
               style={{ borderColor: "rgba(168,132,60,0.35)", background: "#faf7ef" }}
+              data-tour="weaknesses"
             >
               <p className="text-[10.5px] font-semibold uppercase tracking-[0.18em]" style={{ color: "#a8843c" }}>
                 Open weaknesses ({info.findings.length}) — the panel remembers
@@ -302,19 +346,14 @@ function HeroCurrentStage({
             </div>
           ) : null}
 
-          <div className="mt-5 flex flex-wrap gap-5">
+          <div className="mt-5 flex flex-wrap gap-5" data-tour="readiness">
             {readiness.map((r) => (
-              <div key={r.label} className="flex items-center gap-2 text-[13px]" style={{ color: r.done ? "#2eb87a" : "#98a1ab" }}>
-                <span
-                  className="flex h-[18px] w-[18px] items-center justify-center rounded-full border-[1.5px] box-border"
-                  style={{ borderColor: r.done ? "#2eb87a" : "#d8d2c2", background: r.done ? "#2eb87a" : "transparent" }}
-                >
-                  {r.done ? (
-                    <svg viewBox="0 0 10 10" className="h-[9px] w-[9px]">
-                      <path d="M2 5.2 4.2 7.4 8 3" stroke="#fff" strokeWidth="1.8" fill="none" strokeLinecap="round" strokeLinejoin="round" />
-                    </svg>
-                  ) : null}
-                </span>
+              <div
+                key={r.label}
+                className="flex items-center gap-2 text-[13px] transition-colors duration-300"
+                style={{ color: r.done ? "#2eb87a" : "#98a1ab" }}
+              >
+                <AnimatedCheck done={r.done} />
                 {r.label}
               </div>
             ))}
@@ -376,12 +415,12 @@ function OnboardingModal({
   const papers = papersStage(programme);
   return (
     <div
-      className="fixed inset-0 z-[100] flex items-center justify-center p-6"
+      className="anim-fade fixed inset-0 z-[100] flex items-center justify-center p-6"
       style={{ background: "rgba(10,22,38,0.55)", backdropFilter: "blur(6px)" }}
       onClick={onClose}
     >
       <div
-        className="max-h-[86vh] w-full max-w-[580px] overflow-y-auto rounded-[22px] border p-9"
+        className="anim-pop max-h-[86vh] w-full max-w-[580px] overflow-y-auto rounded-[22px] border p-9"
         style={{ background: "#fffdf8", borderColor: "#e5e0d2", boxShadow: "0 40px 100px -30px rgba(10,22,38,0.5)" }}
         onClick={(e) => e.stopPropagation()}
       >
@@ -404,7 +443,7 @@ function OnboardingModal({
               <button
                 key={stage.id}
                 onClick={() => onSetCurrent(stage.id)}
-                className="flex items-center gap-3.5 rounded-xl border-[1.5px] px-4 py-3 text-left transition-colors"
+                className="flex items-center gap-3.5 rounded-xl border-[1.5px] px-4 py-3 text-left transition-all hover:-translate-y-px active:scale-[0.99]"
                 style={{
                   borderColor: isCurrent ? "#2953c4" : "#e5e0d2",
                   background: isCurrent ? "#e8eef9" : "#fff",
@@ -533,7 +572,7 @@ function MilestoneCard({
 }) {
   return (
     <div
-      className="flex flex-col gap-2 rounded-2xl border-[1.5px] p-5 transition-shadow hover:shadow-[0_18px_36px_-24px_rgba(10,22,38,0.4)]"
+      className="flex h-full flex-col gap-2 rounded-2xl border-[1.5px] p-5 transition-all hover:-translate-y-0.5 hover:shadow-[0_18px_36px_-24px_rgba(10,22,38,0.4)]"
       style={{
         borderColor: isCurrent ? "rgba(41,83,196,0.4)" : "#e5e0d2",
         background: isCurrent ? "#fffdf8" : "#fffdf8",
@@ -584,6 +623,22 @@ export default function DashboardPage() {
   const [currentStageId, setCurrentStageId] = useState<string | null>(null);
   const [stageInfo, setStageInfo] = useState<StageInfo | null>(null);
   const [onboardingOpen, setOnboardingOpen] = useState(false);
+  const [tourOpen, setTourOpen] = useState(false);
+
+  // First visit after the welcome wizard: run the coach-mark tour once the
+  // dashboard has painted. Replayable from the footer.
+  useEffect(() => {
+    if (!data || !currentStageId) return;
+    let seen = true;
+    try {
+      seen = Boolean(localStorage.getItem(TOUR_DONE_KEY));
+    } catch {
+      // Storage unavailable → skip the tour rather than loop it forever.
+    }
+    if (seen) return;
+    const t = setTimeout(() => setTourOpen(true), 700);
+    return () => clearTimeout(t);
+  }, [data, currentStageId]);
 
   useEffect(() => {
     Promise.all([
@@ -670,10 +725,16 @@ export default function DashboardPage() {
 
   return (
     <div className="mx-auto max-w-[1140px] px-5 py-12 md:px-9 md:py-13">
-      <p className="text-[11px] font-semibold uppercase tracking-[0.24em]" style={{ color: "#98a1ab" }}>
+      <p
+        className="anim-rise text-[11px] font-semibold uppercase tracking-[0.24em]"
+        style={{ color: "#98a1ab" }}
+      >
         {programme.name} · {currentStage.typicalTiming.label}
       </p>
-      <h1 className="mt-2.5 max-w-[720px] font-display text-[40px] font-normal leading-[1.08] tracking-tight text-ink md:text-[44px]">
+      <h1
+        className="anim-rise mt-2.5 max-w-[720px] font-display text-[40px] font-normal leading-[1.08] tracking-tight text-ink md:text-[44px]"
+        style={{ "--d": "60ms" } as CSSProperties}
+      >
         Your doctorate,{" "}
         <em className="italic font-normal" style={{ color: "#2953c4" }}>
           rehearsed
@@ -681,42 +742,67 @@ export default function DashboardPage() {
         before it&apos;s real.
       </h1>
 
-      <MilestoneRail gates={gates} byStage={byStage} currentId={currentStage.id} onSetCurrent={applyCurrentStage} />
-
-      <HeroCurrentStage
-        stage={currentStage}
-        instance={byStage.get(currentStage.id)}
-        numeral={currentNumeral}
-        info={info}
-        onEditStages={() => setOnboardingOpen(true)}
-      />
-
-      {papers ? <PapersCard stage={papers} /> : null}
-
-      <p className="mt-11 text-[11px] font-semibold uppercase tracking-[0.24em]" style={{ color: "#98a1ab" }}>
-        The full journey
-      </p>
-      <p className="mt-1.5 text-[12.5px]" style={{ color: "#98a1ab" }}>
-        Use “Work on this now” to switch your current stage — nothing here has to go in order.
-      </p>
-      <div className="mt-4 grid gap-3.5 md:grid-cols-3">
-        {gates.map((stage, i) => (
-          <MilestoneCard
-            key={stage.id}
-            stage={stage}
-            numeral={ROMAN[i]}
-            status={byStage.get(stage.id)?.status ?? "upcoming"}
-            isCurrent={stage.id === currentStage.id}
-            onSetCurrent={() => applyCurrentStage(stage.id)}
-          />
-        ))}
+      <div className="anim-rise" style={{ "--d": "120ms" } as CSSProperties}>
+        <MilestoneRail gates={gates} byStage={byStage} currentId={currentStage.id} onSetCurrent={applyCurrentStage} />
       </div>
 
-      {programme.institutionNote ? (
-        <p className="mt-10 max-w-[720px] text-xs leading-relaxed" style={{ color: "#98a1ab" }}>
-          {programme.institutionNote}
-        </p>
+      <div className="anim-rise" style={{ "--d": "200ms" } as CSSProperties}>
+        <HeroCurrentStage
+          stage={currentStage}
+          instance={byStage.get(currentStage.id)}
+          numeral={currentNumeral}
+          info={info}
+          onEditStages={() => setOnboardingOpen(true)}
+        />
+      </div>
+
+      {papers ? (
+        <div className="anim-rise" style={{ "--d": "280ms" } as CSSProperties}>
+          <PapersCard stage={papers} />
+        </div>
       ) : null}
+
+      <div data-tour="journey">
+        <p className="mt-11 text-[11px] font-semibold uppercase tracking-[0.24em]" style={{ color: "#98a1ab" }}>
+          The full journey
+        </p>
+        <p className="mt-1.5 text-[12.5px]" style={{ color: "#98a1ab" }}>
+          Use “Work on this now” to switch your current stage — nothing here has to go in order.
+        </p>
+        <div className="mt-4 grid gap-3.5 md:grid-cols-3">
+          {gates.map((stage, i) => (
+            <div
+              key={stage.id}
+              className="anim-rise-sm"
+              style={{ "--d": `${320 + i * 70}ms` } as CSSProperties}
+            >
+              <MilestoneCard
+                stage={stage}
+                numeral={ROMAN[i]}
+                status={byStage.get(stage.id)?.status ?? "upcoming"}
+                isCurrent={stage.id === currentStage.id}
+                onSetCurrent={() => applyCurrentStage(stage.id)}
+              />
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div className="mt-10 flex flex-wrap items-center gap-4">
+        {programme.institutionNote ? (
+          <p className="max-w-[720px] text-xs leading-relaxed" style={{ color: "#98a1ab" }}>
+            {programme.institutionNote}
+          </p>
+        ) : null}
+        <button
+          onClick={() => setTourOpen(true)}
+          className="ml-auto whitespace-nowrap text-xs text-ink-faint transition-colors hover:text-oxford"
+        >
+          Replay the tour
+        </button>
+      </div>
+
+      {tourOpen ? <CoachTour steps={TOUR_STEPS} onClose={() => setTourOpen(false)} /> : null}
 
       {onboardingOpen ? (
         <OnboardingModal

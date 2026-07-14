@@ -6,7 +6,8 @@ import type { SessionRow } from "@/lib/db/repos/sessions";
 import { findStage, getSessionStyle } from "@/lib/template";
 import { apiGet, formatDateTime, messageOf } from "@/components/api";
 import { ProviderBadge, SessionStatusChip } from "@/components/status-chip";
-import { Card, EmptyState, ErrorBanner, PageLoading, SectionLabel } from "@/components/ui";
+import { Card, EmptyState, ErrorBanner, GuideSteps, PageLoading, SectionLabel } from "@/components/ui";
+import type { CSSProperties } from "react";
 
 function describeSession(s: SessionRow): string {
   if (s.type !== "viva") return "Document review";
@@ -36,7 +37,7 @@ export default function SessionsPage() {
 
   return (
     <div className="mx-auto max-w-[880px] px-5 py-12 md:px-9">
-      <header className="mb-8">
+      <header className="anim-rise mb-8">
         <SectionLabel>History</SectionLabel>
         <h1 className="mt-2 font-display text-[34px] font-normal text-ink">Sessions</h1>
       </header>
@@ -44,14 +45,22 @@ export default function SessionsPage() {
       {sessions.length === 0 ? (
         <EmptyState
           title="No sessions yet"
-          hint="Start a mock viva from the Transfer of Status stage — the transcript and assessment will be kept here."
-        />
+          hint="Transcripts and assessments collect here once you face a panel:"
+        >
+          <GuideSteps
+            steps={[
+              "Open your current stage from the Journey page.",
+              "Upload the document under examination and get feedback on it.",
+              "Pick an examiner style and begin — every session is kept here, with its transcript and verdict.",
+            ]}
+          />
+        </EmptyState>
       ) : (
         <ul className="space-y-2">
-          {sessions.map((s) => (
-            <li key={s.id}>
+          {sessions.map((s, i) => (
+            <li key={s.id} className="anim-rise-sm" style={{ "--d": `${i * 50}ms` } as CSSProperties}>
               <Link href={`/sessions/${s.id}`} className="block">
-                <Card className="flex flex-wrap items-center gap-3 p-4 transition-shadow hover:shadow-md">
+                <Card className="flex flex-wrap items-center gap-3 p-4 transition-all hover:-translate-y-px hover:shadow-md">
                   <span className="font-medium text-oxford">{describeSession(s)}</span>
                   <ProviderBadge provider={s.provider} />
                   <SessionStatusChip status={s.status} />

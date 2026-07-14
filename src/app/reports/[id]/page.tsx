@@ -11,7 +11,8 @@ import type { DocReviewResult, DocReviewSection } from "@/lib/review/types";
 import { findPreviousDocReview, parseDocReviewResult } from "@/lib/review/score-deltas";
 import { apiGet, apiSend, formatDate, formatDateTime, messageOf } from "@/components/api";
 import { Markdown } from "@/components/markdown";
-import { Button, Card, Chip, ErrorBanner, PageLoading, SectionLabel, Spinner } from "@/components/ui";
+import { Burst, Button, Card, Chip, ErrorBanner, PageLoading, SectionLabel, Spinner } from "@/components/ui";
+import type { CSSProperties } from "react";
 
 function parseRubric<T>(report: ReportRow): T | null {
   if (!report.rubric_json) return null;
@@ -32,16 +33,19 @@ function useCriterionTitles(programme: ProgrammeTemplate | null): Map<string, st
   }, [programme]);
 }
 
-function ScoreBar({ score }: { score: number }) {
+function ScoreBar({ score, delay = 0 }: { score: number; delay?: number }) {
   const clamped = Math.max(0, Math.min(5, score));
   return (
     <div className="flex items-center gap-2">
       <div className="h-1.5 w-24 overflow-hidden rounded-full bg-line">
         <div
-          className={`h-full rounded-full ${
+          className={`h-full origin-left rounded-full ${
             clamped >= 4 ? "bg-emerald-500" : clamped >= 3 ? "bg-brass" : "bg-red-400"
           }`}
-          style={{ width: `${(clamped / 5) * 100}%` }}
+          style={{
+            width: `${(clamped / 5) * 100}%`,
+            animation: `growBar 0.7s ${delay}ms cubic-bezier(0.16,1,0.3,1) both`,
+          }}
         />
       </div>
       <span className="text-xs tabular-nums text-ink-soft">{clamped}/5</span>
@@ -72,6 +76,10 @@ function ScoreDelta({ delta }: { delta: number }) {
   );
 }
 
+// The good outcomes across all three programme templates.
+const PASS_VERDICTS = new Set(["approved", "pass", "minor_corrections", "accept"]);
+const FAIL_VERDICTS = new Set(["reject", "not_passed", "fail"]);
+
 function VerdictBanner({
   verdict,
   programme,
@@ -82,14 +90,15 @@ function VerdictBanner({
   const template = programme?.stages
     .flatMap((s) => s.assessment?.verdicts ?? [])
     .find((v) => v.id === verdict);
-  const tone =
-    verdict === "approved"
-      ? "border-emerald-300 bg-emerald-50 text-emerald-900"
-      : verdict === "referred"
-        ? "border-amber-300 bg-amber-50 text-amber-900"
-        : "border-red-300 bg-red-50 text-red-900";
+  const passed = PASS_VERDICTS.has(verdict);
+  const tone = passed
+    ? "border-emerald-300 bg-emerald-50 text-emerald-900"
+    : FAIL_VERDICTS.has(verdict)
+      ? "border-red-300 bg-red-50 text-red-900"
+      : "border-amber-300 bg-amber-50 text-amber-900";
   return (
-    <div className={`rounded-xl border px-5 py-4 ${tone}`}>
+    <div className={`anim-pop relative rounded-xl border px-5 py-4 ${tone}`}>
+      {passed ? <Burst /> : null}
       <p className="font-display text-lg">{template?.label ?? verdict}</p>
       {template?.description ? (
         <p className="mt-1 text-sm opacity-80">{template.description}</p>
@@ -116,7 +125,7 @@ function VivaAssessmentView({
     <div className="space-y-6">
       <VerdictBanner verdict={assessment.verdict} programme={programme} />
 
-      <Card className="overflow-hidden">
+      <Card className="anim-rise overflow-hidden" style={{ "--d": "80ms" } as CSSProperties}>
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-line bg-oxford-faint text-left">
@@ -126,11 +135,11 @@ function VivaAssessmentView({
             </tr>
           </thead>
           <tbody>
-            {assessment.criteria.map((c) => (
+            {assessment.criteria.map((c, i) => (
               <tr key={c.id} className="border-b border-line/60 align-top last:border-0">
                 <td className="px-4 py-3 font-medium text-ink">{titles.get(c.id) ?? c.id}</td>
                 <td className="px-4 py-3">
-                  <ScoreBar score={c.score} />
+                  <ScoreBar score={c.score} delay={200 + i * 110} />
                 </td>
                 <td className="px-4 py-3 leading-relaxed text-ink-soft">{c.comments}</td>
               </tr>
@@ -139,7 +148,7 @@ function VivaAssessmentView({
         </table>
       </Card>
 
-      <div className="grid gap-4 md:grid-cols-2">
+      <div className="anim-rise grid gap-4 md:grid-cols-2" style={{ "--d": "180ms" } as CSSProperties}>
         <Card className="p-5">
           <SectionLabel>Strengths</SectionLabel>
           <ul className="mt-2 list-disc space-y-1.5 pl-5 text-sm leading-relaxed text-ink-soft">
@@ -158,7 +167,7 @@ function VivaAssessmentView({
         </Card>
       </div>
 
-      <Card className="p-6">
+      <Card className="anim-rise p-6" style={{ "--d": "280ms" } as CSSProperties}>
         <Markdown>{report.content_md}</Markdown>
       </Card>
     </div>
@@ -241,12 +250,12 @@ function DocReviewView({
   const titles = useCriterionTitles(programme);
   return (
     <div className="space-y-6">
-      <Card className="p-5">
+      <Card className="anim-rise p-5">
         <SectionLabel>Summary</SectionLabel>
         <p className="mt-2 text-sm leading-relaxed text-ink-soft">{review.summary}</p>
       </Card>
 
-      <Card className="p-5">
+      <Card className="anim-rise p-5" style={{ "--d": "100ms" } as CSSProperties}>
         <SectionLabel>Scorecard</SectionLabel>
         {comparison ? (
           <p className="mt-1 text-xs text-ink-soft">
@@ -257,7 +266,7 @@ function DocReviewView({
           </p>
         ) : null}
         <div className="mt-3 space-y-2.5">
-          {review.criteria.map((c) => {
+          {review.criteria.map((c, i) => {
             const previousScore = comparison?.previousScores.get(c.id);
             const delta = previousScore === undefined ? null : c.score - previousScore;
             return (
@@ -267,7 +276,7 @@ function DocReviewView({
               >
                 <span className="text-sm font-medium text-ink">{titles.get(c.id) ?? c.id}</span>
                 <div className="flex flex-wrap items-center gap-2">
-                  <ScoreBar score={c.score} />
+                  <ScoreBar score={c.score} delay={200 + i * 110} />
                   {delta === null ? null : <ScoreDelta delta={delta} />}
                 </div>
                 <span className="text-sm leading-relaxed text-ink-soft">{c.comments}</span>
@@ -277,7 +286,7 @@ function DocReviewView({
         </div>
       </Card>
 
-      <div>
+      <div className="anim-rise" style={{ "--d": "200ms" } as CSSProperties}>
         <SectionLabel>Findings</SectionLabel>
         <div className="mt-2 space-y-3">
           {SEVERITY_ORDER.flatMap((sev) =>
@@ -309,7 +318,7 @@ function DocReviewView({
         </div>
       </div>
 
-      <Card className="p-5">
+      <Card className="anim-rise p-5" style={{ "--d": "300ms" } as CSSProperties}>
         <SectionLabel>Top actions</SectionLabel>
         <ol className="mt-2 list-decimal space-y-1.5 pl-5 text-sm leading-relaxed text-ink">
           {review.top_actions.map((a, i) => (
@@ -436,7 +445,7 @@ export default function ReportPage() {
       >
         ← Back
       </Link>
-      <header className="mb-6 mt-3">
+      <header className="anim-rise mb-6 mt-3">
         <div className="flex flex-wrap items-center gap-3">
           <h1 className="font-display text-[32px] font-normal text-ink">
             {isViva
