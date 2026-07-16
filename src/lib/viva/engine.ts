@@ -16,6 +16,7 @@ import {
 import { getDocument } from "@/lib/db/repos/documents";
 import { listFindings } from "@/lib/db/repos/findings";
 import type { ReportRow } from "@/lib/db/repos/reports";
+import { clearUsageLimit, recordUsageLimit } from "@/lib/providers/usage";
 import { buildPanelSystemPrompt, parseSpeakerTag, stripVivaCompleteToken } from "./prompts";
 import { generateQuestionPlan } from "./planner";
 import { generateAssessment } from "./report";
@@ -158,6 +159,7 @@ export async function* submitUtterance(
         yield { type: "panel_delta", text: event.text };
         break;
       case "done": {
+        clearUsageLimit(config.provider);
         const { content, concluded } = stripVivaCompleteToken(event.fullText);
         if (concluded) endSession(sessionId);
         const row = appendMessage({
@@ -171,6 +173,9 @@ export async function* submitUtterance(
         break;
       }
       case "error":
+        // Remember usage-window hits so session setup can steer the user
+        // to the other backend until this one resets.
+        if (event.code === "usage_limit") recordUsageLimit(config.provider);
         // Do not persist a panel message and do not end the session — the
         // candidate can retry the turn once the underlying issue is fixed.
         yield { type: "error", code: event.code, message: event.message };

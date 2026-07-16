@@ -268,11 +268,27 @@ and the owner would voluntarily run a second drill.*
   (transcript replays minus that message); the viva room error banner offers
   "Retry last answer". Rename round-trip + delete-404 verified live;
   retry-after-provider-error still needs a live error to exercise.
-- **Guided stage stepper** — the design spec's 3-step flow (Submit →
-  Feedback → Face the panel) replacing stage tabs; the spec is in the
-  owner's Claude Design project.
-- **Quota UX** — surface provider usage-window state before a session
-  starts; suggest the other backend when one is rate-limited.
+- ✅ **Guided stage stepper** (Claude, 2026-07-16) — the stage tab strip is
+  now a numbered stepper: Submit → Feedback → Face the panel → The record
+  (review-only stages skip the panel step). Step states derive from live
+  stage data (readable docs / doc reviews / sessions / reports) fetched at
+  page level and refreshed via an `onActivity` callback from the documents
+  view; done steps show green draw-in checks with green connectors; the
+  current step is the blue node. Submit and Feedback both open the
+  documents view (that is where both actions live); `?tab=viva|reports`
+  deep links map to the panel/record steps and fall back to Submit on
+  review-only stages. Verified live on transfer (4 steps, all done) and
+  thesis (3 steps).
+- ✅ **Quota UX** (Claude, 2026-07-16) — `src/lib/providers/usage.ts`
+  remembers each provider's last `usage_limit` error in settings
+  (`claude_limited_at`/`codex_limited_at`; NOT settable via the settings
+  PUT schema), auto-expires after 5h, and is cleared by the next
+  successful turn. The engine records/clears on streamed turns (the main
+  quota consumer — one-shot planner/review calls intentionally NOT hooked:
+  they funnel through the DB-less shared JSON helper); `GET
+  /api/providers/status` returns fresh `limitedAt` per provider; the
+  ProviderPicker shows an amber "hit its usage window at HH:MM — <other>
+  looks fresher" note. 4 unit tests (record/clear/expiry/garbage).
 
 **M2 — Public launch (v1.2).**
 - `docs/` landing page on GitHub Pages: screenshots, a 60-second demo

@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 import { getSessionStyle, type ProgrammeTemplate, type StageTemplate } from "@/lib/template";
 import type { StageInstance, StageStatus } from "@/lib/db/repos/stage-instances";
 import type { DocumentSummary } from "@/lib/db/repos/documents";
@@ -25,6 +25,7 @@ import { CountdownChip } from "@/components/countdown";
 import { ProviderPicker } from "@/components/provider-picker";
 import { UploadDropzone } from "@/components/upload-dropzone";
 import {
+  AnimatedCheck,
   Burst,
   Button,
   Card,
@@ -179,7 +180,13 @@ function StageHeader({
 /* Documents tab                                                       */
 /* ------------------------------------------------------------------ */
 
-function DocumentsTab({ stage }: { stage: StageTemplate }) {
+function DocumentsTab({
+  stage,
+  onActivity,
+}: {
+  stage: StageTemplate;
+  onActivity?: () => void;
+}) {
   const [docs, setDocs] = useState<DocumentSummary[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [reviewing, setReviewing] = useState<string | null>(null);
@@ -187,9 +194,12 @@ function DocumentsTab({ stage }: { stage: StageTemplate }) {
 
   const load = useCallback(() => {
     apiGet<{ documents: DocumentSummary[] }>(`/api/documents?stageId=${stage.id}`)
-      .then((r) => setDocs(r.documents))
+      .then((r) => {
+        setDocs(r.documents);
+        onActivity?.();
+      })
       .catch((e) => setError(messageOf(e)));
-  }, [stage.id]);
+  }, [stage.id, onActivity]);
 
   useEffect(load, [load]);
 
@@ -801,6 +811,92 @@ function ReportsTab({ stage }: { stage: StageTemplate }) {
 }
 
 /* ------------------------------------------------------------------ */
+/* Guided stepper                                                      */
+/* ------------------------------------------------------------------ */
+
+type StepId = "submit" | "feedback" | "panel" | "record";
+
+interface StageStep {
+  id: StepId;
+  title: string;
+  hint: string;
+  done: boolean;
+}
+
+// Which content view each step opens (submit and feedback share one).
+const STEP_VIEW: Record<StepId, Tab> = {
+  submit: "documents",
+  feedback: "documents",
+  panel: "viva",
+  record: "reports",
+};
+
+function StageStepper({
+  steps,
+  currentId,
+  onSelect,
+}: {
+  steps: StageStep[];
+  currentId: StepId;
+  onSelect: (id: StepId) => void;
+}) {
+  return (
+    <div className="mb-7 flex items-start">
+      {steps.map((step, i) => {
+        const current = step.id === currentId;
+        const prevDone = i === 0 || steps[i - 1].done;
+        return (
+          <Fragment key={step.id}>
+            {i > 0 ? (
+              <div
+                className="mx-1.5 mt-[15px] h-px min-w-4 flex-1 transition-colors duration-500"
+                style={{ background: prevDone ? "#2eb87a" : "#e5e0d2" }}
+              />
+            ) : null}
+            <button
+              type="button"
+              onClick={() => onSelect(step.id)}
+              className="flex max-w-[150px] flex-col items-center gap-1.5 text-center transition-transform hover:-translate-y-0.5 active:scale-[0.97]"
+            >
+              {step.done && !current ? (
+                <AnimatedCheck done size={30} />
+              ) : (
+                <span
+                  className="flex h-[30px] w-[30px] items-center justify-center rounded-full border-[1.5px] text-[13px] font-semibold transition-all duration-300"
+                  style={
+                    current
+                      ? {
+                          background: "#2953c4",
+                          borderColor: "#2953c4",
+                          color: "#fff",
+                          boxShadow: "0 0 0 4px rgba(41,83,196,0.15)",
+                        }
+                      : step.done
+                        ? { background: "#2eb87a", borderColor: "#2eb87a", color: "#fff" }
+                        : { background: "#fffdf8", borderColor: "#d8d2c2", color: "#98a1ab" }
+                  }
+                >
+                  {step.done && current ? "✓" : i + 1}
+                </span>
+              )}
+              <span
+                className="text-[12.5px] leading-tight transition-colors"
+                style={{ fontWeight: current ? 600 : 500, color: current ? "#16202e" : "#5b6673" }}
+              >
+                {step.title}
+              </span>
+              <span className="hidden text-[11px] leading-snug text-ink-faint sm:block">
+                {step.hint}
+              </span>
+            </button>
+          </Fragment>
+        );
+      })}
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
 /* Page                                                                */
 /* ------------------------------------------------------------------ */
 
@@ -809,19 +905,60 @@ export default function StagePage() {
   const stageId = params.stageId;
   const [data, setData] = useState<ProgrammeResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
-  // ?tab=viva|reports deep-links from the dashboard. Safe to read location in
-  // the initializer: nothing tab-dependent renders until data has loaded.
-  const [tab, setTab] = useState<Tab>(() => {
-    if (typeof window === "undefined") return "documents";
+  // ?tab=viva|reports deep-links from the dashboard map onto stepper steps.
+  // Safe to read location in the initializer: nothing step-dependent renders
+  // until data has loaded.
+  const [stepId, setStepId] = useState<StepId>(() => {
+    if (typeof window === "undefined") return "submit";
     const t = new URLSearchParams(window.location.search).get("tab");
-    return t === "viva" || t === "reports" ? t : "documents";
+    return t === "viva" ? "panel" : t === "reports" ? "record" : "submit";
   });
+  // Step completion states, refreshed whenever a tab reports activity.
+  const [activity, setActivity] = useState<{
+    readable: number;
+    reviews: number;
+    sessions: number;
+    reports: number;
+  } | null>(null);
+  const [refreshKey, setRefreshKey] = useState(0);
+  const bumpActivity = useCallback(() => setRefreshKey((k) => k + 1), []);
 
   useEffect(() => {
     apiGet<ProgrammeResponse>("/api/programme")
       .then(setData)
       .catch((e) => setError(messageOf(e)));
   }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    Promise.all([
+      apiGet<{ documents: DocumentSummary[] }>(`/api/documents?stageId=${stageId}`),
+      apiGet<{ sessions: SessionRow[] }>(`/api/sessions?stageId=${stageId}`),
+      apiGet<{ reports: ReportRow[] }>("/api/reports"),
+    ])
+      .then(([d, s, r]) => {
+        if (cancelled) return;
+        const sessionIds = new Set(s.sessions.map((x) => x.id));
+        const docIds = new Set(d.documents.map((x) => x.id));
+        const stageReports = r.reports.filter(
+          (rep) =>
+            (rep.session_id && sessionIds.has(rep.session_id)) ||
+            (rep.document_id && docIds.has(rep.document_id)),
+        );
+        setActivity({
+          readable: d.documents.filter((x) => x.has_text).length,
+          reviews: stageReports.filter((rep) => rep.type === "doc_review").length,
+          sessions: s.sessions.length,
+          reports: stageReports.length,
+        });
+      })
+      .catch(() => {
+        if (!cancelled) setActivity(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [stageId, refreshKey]);
 
   const stage = useMemo(
     () => data?.programme.stages.find((s) => s.id === stageId),
@@ -838,14 +975,41 @@ export default function StagePage() {
     return <ErrorBanner tone="red" message={`Unknown stage: ${stageId}`} />;
   }
 
-  const tabs: { id: Tab; label: string }[] = [
-    { id: "documents", label: "Documents" },
-    // Only stages with a panel get an interview tab (thesis is review-only).
+  // The guided path through a gate. Review-only stages (thesis) skip the
+  // panel step; "The record" collects reports and the weakness ledger.
+  const steps: StageStep[] = [
+    {
+      id: "submit",
+      title: "Submit",
+      hint: stage.requiredDocuments[0]?.title ?? "Upload your document",
+      done: (activity?.readable ?? 0) > 0,
+    },
+    {
+      id: "feedback",
+      title: "Feedback",
+      hint: "Rubric-scored review",
+      done: (activity?.reviews ?? 0) > 0,
+    },
     ...(stage.assessment
-      ? [{ id: "viva" as Tab, label: getSessionStyle(stage).label }]
+      ? [
+          {
+            id: "panel" as StepId,
+            title: "Face the panel",
+            hint: `${getSessionStyle(stage).label} or drill`,
+            done: (activity?.sessions ?? 0) > 0,
+          },
+        ]
       : []),
-    { id: "reports", label: "Reports" },
+    {
+      id: "record",
+      title: "The record",
+      hint: "Reports & weakness ledger",
+      done: (activity?.reports ?? 0) > 0,
+    },
   ];
+  // A ?tab=viva deep link on a review-only stage falls back to step one.
+  const currentStep = steps.some((s) => s.id === stepId) ? stepId : "submit";
+  const view = STEP_VIEW[currentStep];
 
   return (
     <div className="mx-auto max-w-[880px] px-5 py-11 md:px-9">
@@ -880,26 +1044,14 @@ export default function StagePage() {
 
       {stage.implemented ? (
         <>
-          <div className="mb-6 flex gap-1 border-b border-line">
-            {tabs.map((t) => (
-              <button
-                key={t.id}
-                onClick={() => setTab(t.id)}
-                className={`-mb-px border-b-2 px-4 py-2 text-sm transition-colors ${
-                  tab === t.id
-                    ? "border-oxford font-medium text-oxford"
-                    : "border-transparent text-ink-faint hover:text-ink"
-                }`}
-              >
-                {t.label}
-              </button>
-            ))}
+          <div className="anim-rise" style={{ "--d": "140ms" } as CSSProperties}>
+            <StageStepper steps={steps} currentId={currentStep} onSelect={setStepId} />
           </div>
-          {/* Keyed on the tab so every switch re-runs the entrance animation. */}
-          <div key={tab} className="anim-rise-sm">
-            {tab === "documents" ? <DocumentsTab stage={stage} /> : null}
-            {tab === "viva" ? <VivaTab stage={stage} /> : null}
-            {tab === "reports" ? <ReportsTab stage={stage} /> : null}
+          {/* Keyed on the view so every switch re-runs the entrance animation. */}
+          <div key={view} className="anim-rise-sm">
+            {view === "documents" ? <DocumentsTab stage={stage} onActivity={bumpActivity} /> : null}
+            {view === "viva" ? <VivaTab stage={stage} /> : null}
+            {view === "reports" ? <ReportsTab stage={stage} /> : null}
           </div>
         </>
       ) : (

@@ -4,9 +4,12 @@ import { useEffect, useState } from "react";
 import type { AuthStatus, ProviderId } from "@/lib/providers/types";
 import { apiGet, messageOf, PROVIDER_LABELS } from "@/components/api";
 
+// AuthStatus plus the server's memory of a recent usage-window hit.
+export type ProviderStatusInfo = AuthStatus & { limitedAt?: string | null };
+
 export interface ProvidersStatus {
-  claude: AuthStatus;
-  codex: AuthStatus;
+  claude: ProviderStatusInfo;
+  codex: ProviderStatusInfo;
 }
 
 export function useProviderStatus() {
@@ -73,6 +76,8 @@ export function ProviderPicker({
           const ok = auth ? auth.ok : null;
           const selectable = !disabled && ok !== false;
           const selected = value === id;
+          const other = id === "claude" ? "codex" : "claude";
+          const otherFresh = Boolean(status?.[other]?.ok) && !status?.[other]?.limitedAt;
           return (
             <button
               key={id}
@@ -105,6 +110,13 @@ export function ProviderPicker({
               >
                 {loading ? "Checking authentication…" : auth?.detail ?? "Status unknown"}
               </p>
+              {ok && auth?.limitedAt ? (
+                <p className="anim-rise-sm mt-1.5 rounded-lg bg-amber-50 px-2 py-1 text-[11.5px] font-medium leading-snug text-amber-800">
+                  Hit its usage window at{" "}
+                  {new Date(auth.limitedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                  {otherFresh ? ` — ${PROVIDER_LABELS[other]} looks fresher.` : " — it may still be resetting."}
+                </p>
+              ) : null}
             </button>
           );
         })}

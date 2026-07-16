@@ -13,6 +13,10 @@ export interface AppSettings {
   programme_id: string;
   // "1" once the first-run wizard has completed.
   onboarded: string;
+  // ISO timestamp of the provider's last usage_limit error; "" = none seen.
+  // Set/cleared by lib/providers/usage.ts as sessions hit or clear limits.
+  claude_limited_at: string;
+  codex_limited_at: string;
 }
 
 export const DEFAULT_SETTINGS: AppSettings = {
@@ -22,6 +26,8 @@ export const DEFAULT_SETTINGS: AppSettings = {
   current_stage: "",
   programme_id: "",
   onboarded: "",
+  claude_limited_at: "",
+  codex_limited_at: "",
 };
 
 export function getSettings(): AppSettings {
