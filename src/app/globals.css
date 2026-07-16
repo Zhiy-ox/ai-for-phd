@@ -219,6 +219,28 @@ body {
 }
 
 /* ---------------------------------------------------------------- */
+/* Print (supervisor export)                                          */
+/* ---------------------------------------------------------------- */
+
+@media print {
+  .no-print {
+    display: none !important;
+  }
+  body {
+    background: #fff;
+  }
+  * {
+    animation: none !important;
+    transition: none !important;
+    box-shadow: none !important;
+  }
+  .print-sheet {
+    max-width: 100%;
+    padding: 0;
+  }
+}
+
+/* ---------------------------------------------------------------- */
 /* Markdown rendering (react-markdown output)                        */
 /* ---------------------------------------------------------------- */
 

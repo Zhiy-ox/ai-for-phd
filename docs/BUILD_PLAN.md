@@ -229,17 +229,35 @@ survives a real document, `weakness_updates` returns from both providers,
 and the owner would voluntarily run a second drill.*
 
 **M1 — Daily-use polish (v1.1).** Ship in any order; all are self-contained:
-- **Deadline awareness** — target-date countdowns on the milestone rail and
-  gate seal; "next move" gains urgency when a gate is < 6 weeks out.
-- **Supervisor export** — print-optimized view of an assessment report +
-  a one-page gate-readiness summary (ledger status, score trends) the
-  student can hand to their real supervisor.
+- ✅ **Deadline awareness** (Claude, 2026-07-16) — `src/lib/dates.ts`
+  (`daysUntil`/`urgencyOf`/`formatCountdown`, 7 tests; urgent = ≤42 days) +
+  `CountdownChip`/`isGateUrgent` in `src/components/countdown.tsx`. Shown on
+  the milestone rail nodes, hero status row + gate seal, journey cards, and
+  the stage header; the "Your next move" panel gains a gold "gate in N weeks
+  — every rehearsal counts" nudge inside six weeks.
+- ✅ **Supervisor export** (Claude, 2026-07-16) — `@media print` rules in
+  globals.css (`.no-print` on masthead/controls, shadows/animations off) +
+  "Print / save as PDF" on the report page, and a print-first one-page
+  gate-readiness summary at `/stages/[stageId]/summary` (status, target +
+  countdown, readiness checks, session/review counts + latest verdict,
+  latest rubric scores as a B/W-safe dot scale, weakness ledger with
+  open/improving/resolved). Linked "Supervisor summary" from the stage
+  header. Verified live against real thesis data.
+- ✅ **Session management** (Claude, 2026-07-16) — migration v4 adds
+  `sessions.title`; `renameSession`/`deleteSession` (transactional: wipes
+  messages + reports, KEEPS harvested findings); `PATCH`/`DELETE
+  /api/sessions/[id]`; sessions list gains hover rename (inline input) and
+  delete (inline confirm, no window.confirm); custom titles show in the list
+  and viva-room header. Retry: `submitUtterance(id, "")` when the last
+  message is an unanswered candidate answer re-sends it WITHOUT duplicating
+  (transcript replays minus that message); the viva room error banner offers
+  "Retry last answer". Rename round-trip + delete-404 verified live;
+  retry-after-provider-error still needs a live error to exercise.
 - **Guided stage stepper** — the design spec's 3-step flow (Submit →
   Feedback → Face the panel) replacing stage tabs; the spec is in the
   owner's Claude Design project.
 - **Quota UX** — surface provider usage-window state before a session
   starts; suggest the other backend when one is rate-limited.
-- **Session management** — rename/delete sessions, retry-turn affordance.
 
 **M2 — Public launch (v1.2).**
 - `docs/` landing page on GitHub Pages: screenshots, a 60-second demo

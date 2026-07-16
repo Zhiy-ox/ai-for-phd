@@ -88,4 +88,8 @@ export const MIGRATIONS: string[] = [
   DROP INDEX IF EXISTS idx_findings_stage;
   CREATE INDEX idx_findings_programme_stage ON findings(programme_id, stage_id, status);
   `,
+  // v4 — user-editable session titles (rename affordance; null = derived label)
+  `
+  ALTER TABLE sessions ADD COLUMN title TEXT;
+  `,
 ];

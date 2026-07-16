@@ -12,6 +12,7 @@ export interface SessionRow {
   provider_session_ref: string | null;
   status: SessionStatus;
   config_json: string;
+  title: string | null;
   created_at: string;
   ended_at: string | null;
 }
@@ -83,6 +84,27 @@ export function endSession(id: string, status: Exclude<SessionStatus, "active"> 
   getDb()
     .prepare("UPDATE sessions SET status = ?, ended_at = ? WHERE id = ?")
     .run(status, nowIso(), id);
+}
+
+export function renameSession(id: string, title: string | null): void {
+  const clean = title?.trim() || null;
+  getDb().prepare("UPDATE sessions SET title = ? WHERE id = ?").run(clean, id);
+}
+
+/** Deletes a session with its transcript and reports. Ledger findings the
+ *  session produced are knowledge, not artifacts — they stay. */
+export function deleteSession(id: string): void {
+  const db = getDb();
+  db.exec("BEGIN");
+  try {
+    db.prepare("DELETE FROM messages WHERE session_id = ?").run(id);
+    db.prepare("DELETE FROM reports WHERE session_id = ?").run(id);
+    db.prepare("DELETE FROM sessions WHERE id = ?").run(id);
+    db.exec("COMMIT");
+  } catch (err) {
+    db.exec("ROLLBACK");
+    throw err;
+  }
 }
 
 export function appendMessage(m: {

@@ -115,10 +115,23 @@ export async function* submitUtterance(
     })),
   });
 
-  const prior = listMessages(sessionId);
+  let prior = listMessages(sessionId);
   const beginning = text.trim() === "" && prior.length === 0;
-  const userMessage = beginning ? BEGIN_MESSAGE : text;
-  if (!beginning) {
+  // Retry: an empty utterance when the candidate's last answer never got a
+  // panel reply (provider error) re-sends that answer without duplicating it.
+  const retrying =
+    text.trim() === "" && prior.length > 0 && prior[prior.length - 1].role === "user";
+  let userMessage: string;
+  if (beginning) {
+    userMessage = BEGIN_MESSAGE;
+  } else if (retrying) {
+    userMessage = prior[prior.length - 1].content;
+    prior = prior.slice(0, -1);
+  } else if (text.trim() === "") {
+    yield { type: "error", code: "unknown", message: "Nothing to retry — the panel has already replied." };
+    return;
+  } else {
+    userMessage = text;
     appendMessage({ sessionId, role: "user", content: text });
   }
 

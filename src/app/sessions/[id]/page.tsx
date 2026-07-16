@@ -413,7 +413,11 @@ export default function VivaRoomPage() {
       >
         <div className="mx-auto flex max-w-[640px] flex-col gap-5">
           <p className="text-center text-[11px] uppercase tracking-[0.18em]" style={{ color: "rgba(245,242,234,0.35)" }}>
-            {isDrill ? `Quick-fire drill — ${findStage(session.stage_id)?.title ?? "practice"}` : `${sessionTitle(session.stage_id)} · the panel has read your report`}
+            {session.title
+              ? session.title
+              : isDrill
+                ? `Quick-fire drill — ${findStage(session.stage_id)?.title ?? "practice"}`
+                : `${sessionTitle(session.stage_id)} · the panel has read your report`}
           </p>
           {entries.length === 0 && streaming && !live ? (
             <div
@@ -452,8 +456,20 @@ export default function VivaRoomPage() {
       </div>
 
       {error ? (
-        <div className="mt-3">
+        <div className="anim-rise-sm mt-3 space-y-2">
           <ErrorBanner message={error.message} hint={error.hint} />
+          {canSpeak && !streaming && entries.length > 0 && entries[entries.length - 1].role === "user" ? (
+            <button
+              onClick={() => void runTurn("")}
+              className="flex items-center gap-2 rounded-full px-4 py-2 text-[12.5px] font-medium transition-all active:scale-[0.97]"
+              style={{ border: "1px solid rgba(240,217,160,0.35)", color: "#f0d9a0" }}
+            >
+              <svg viewBox="0 0 16 16" fill="none" className="h-3 w-3" aria-hidden="true">
+                <path d="M13.5 8a5.5 5.5 0 1 1-1.6-3.9M13.5 2.5v2.6h-2.6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+              Retry last answer — nothing is lost
+            </button>
+          ) : null}
         </div>
       ) : null}
       {micError ? (

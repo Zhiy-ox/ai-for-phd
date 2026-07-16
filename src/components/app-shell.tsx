@@ -73,7 +73,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   return (
     <div className="min-h-screen" style={dark ? { background: "#0a1626" } : undefined}>
       <header
-        className="sticky top-0 z-50 border-b backdrop-blur-md"
+        className="no-print sticky top-0 z-50 border-b backdrop-blur-md"
         style={
           dark
             ? { background: "rgba(10,22,38,0.72)", borderColor: "rgba(255,255,255,0.08)" }

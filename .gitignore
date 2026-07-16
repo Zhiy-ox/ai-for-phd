@@ -42,3 +42,7 @@ next-env.d.ts
 
 # app data (sqlite db, uploaded documents, agent scratch)
 /data
+
+# owner private working files — repo is public, never commit these
+/tmp
+/2026-*.md

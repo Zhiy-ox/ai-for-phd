@@ -372,7 +372,7 @@ function RebuttalLetterView({ report }: { report: ReportRow }) {
 
   return (
     <div className="space-y-5">
-      <div className="flex flex-wrap items-center gap-2">
+      <div className="no-print flex flex-wrap items-center gap-2">
         <Button onClick={save} disabled={!dirty || saving}>
           {saving ? <Spinner /> : null} Save edits
         </Button>
@@ -386,7 +386,7 @@ function RebuttalLetterView({ report }: { report: ReportRow }) {
         value={content}
         onChange={(e) => setContent(e.target.value)}
         rows={24}
-        className="w-full rounded-2xl border border-line bg-card p-5 font-mono text-[13px] leading-relaxed text-ink focus:border-oxford focus:outline-none"
+        className="no-print w-full rounded-2xl border border-line bg-card p-5 font-mono text-[13px] leading-relaxed text-ink focus:border-oxford focus:outline-none"
       />
       <Card className="p-6">
         <SectionLabel>Preview</SectionLabel>
@@ -441,7 +441,7 @@ export default function ReportPage() {
     <div className="mx-auto max-w-[880px] px-5 py-11 md:px-9">
       <Link
         href={report.session_id ? `/sessions/${report.session_id}` : report.document_id ? `/documents/${report.document_id}` : "/"}
-        className="text-sm text-ink-faint hover:text-oxford"
+        className="no-print text-sm text-ink-faint hover:text-oxford"
       >
         ← Back
       </Link>
@@ -454,6 +454,16 @@ export default function ReportPage() {
                 ? "Response to reviewers"
                 : "Document review"}
           </h1>
+          <button
+            onClick={() => window.print()}
+            className="no-print ml-auto flex items-center gap-1.5 text-xs text-ink-faint transition-colors hover:text-oxford"
+            title="Print-optimized — hand it to your supervisor"
+          >
+            <svg viewBox="0 0 16 16" fill="none" className="h-3.5 w-3.5" aria-hidden="true">
+              <path d="M4.5 6.5v-4h7v4M4.5 12.5h-2v-6h11v6h-2M5.5 10.5h5v3h-5v-3Z" stroke="currentColor" strokeWidth="1.2" strokeLinejoin="round" />
+            </svg>
+            Print / save as PDF
+          </button>
         </div>
         <p className="mt-1 text-xs text-ink-faint">{formatDateTime(report.created_at)}</p>
       </header>

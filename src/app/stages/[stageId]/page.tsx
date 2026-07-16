@@ -20,6 +20,7 @@ import {
   STAGE_PRIMARY_KIND,
 } from "@/components/api";
 import { KindBadge, ProviderBadge, StageStatusChip } from "@/components/status-chip";
+import { CountdownChip } from "@/components/countdown";
 import { ProviderPicker } from "@/components/provider-picker";
 import { UploadDropzone } from "@/components/upload-dropzone";
 import {
@@ -715,7 +716,17 @@ export default function StagePage() {
           <h1 className="font-display text-[38px] font-normal text-ink">{stage.title}</h1>
           {instance ? <StageStatusChip status={instance.status} /> : null}
           {stage.gate.formRef ? <Chip tone="brass">{stage.gate.formRef}</Chip> : null}
+          {instance?.status !== "passed" ? <CountdownChip date={instance?.target_date} /> : null}
           <span className="text-xs text-ink-faint">{stage.typicalTiming.label}</span>
+          <Link
+            href={`/stages/${stage.id}/summary`}
+            className="ml-auto flex items-center gap-1.5 text-xs text-ink-faint transition-colors hover:text-oxford"
+          >
+            <svg viewBox="0 0 16 16" fill="none" className="h-3.5 w-3.5" aria-hidden="true">
+              <path d="M4.5 6.5v-4h7v4M4.5 12.5h-2v-6h11v6h-2M5.5 10.5h5v3h-5v-3Z" stroke="currentColor" strokeWidth="1.2" strokeLinejoin="round" />
+            </svg>
+            Supervisor summary
+          </Link>
         </div>
         <p className="mt-2 max-w-3xl text-sm leading-relaxed text-ink-soft">
           {stage.description}

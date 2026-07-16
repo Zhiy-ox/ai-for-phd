@@ -13,6 +13,8 @@ import type { AppSettings } from "@/lib/db/repos/settings";
 import { apiGet, apiSend, formatDate, messageOf } from "@/components/api";
 import { AnimatedCheck, ErrorBanner, PageLoading } from "@/components/ui";
 import { CoachTour, TOUR_DONE_KEY, type TourStep } from "@/components/coach-tour";
+import { CountdownChip, isGateUrgent } from "@/components/countdown";
+import { daysUntil, formatCountdown } from "@/lib/dates";
 
 interface ProgrammeResponse {
   programme: ProgrammeTemplate;
@@ -150,6 +152,18 @@ const STATUS_COLOR: Record<StageStatus, string> = {
 /* Milestone rail                                                      */
 /* ------------------------------------------------------------------ */
 
+// Compact countdown line for rail nodes — text only, colored by urgency.
+function RailCountdown({ date }: { date: string }) {
+  const days = daysUntil(date);
+  if (days === null) return null;
+  const color = days < 0 ? "#b3402f" : days <= 42 ? "#8b6a24" : "#98a1ab";
+  return (
+    <span className="text-[11px] font-semibold" style={{ color }}>
+      {formatCountdown(days)}
+    </span>
+  );
+}
+
 function MilestoneRail({
   gates,
   byStage,
@@ -216,6 +230,9 @@ function MilestoneRail({
                 <span className="text-[11px]" style={{ color: "#b3bac2" }}>
                   {stage.typicalTiming.label}
                 </span>
+                {!done && byStage.get(stage.id)?.target_date ? (
+                  <RailCountdown date={byStage.get(stage.id)!.target_date!} />
+                ) : null}
               </button>
             </div>
           );
@@ -243,6 +260,8 @@ function HeroCurrentStage({
   onEditStages: () => void;
 }) {
   const move = nextMove(stage, info);
+  const urgent = isGateUrgent(instance?.target_date);
+  const targetDays = instance?.target_date ? daysUntil(instance.target_date) : null;
   const readable = (info?.docs ?? []).filter((d) => d.has_text);
   const readiness = [
     { label: "Document uploaded", done: readable.length > 0 },
@@ -269,6 +288,7 @@ function HeroCurrentStage({
               <span className="h-1.5 w-1.5 animate-pulse rounded-full" style={{ background: "#2953c4" }} />
               {STATUS_LABEL[instance?.status ?? "active"]}
             </span>
+            <CountdownChip date={instance?.target_date} />
             <button
               onClick={onEditStages}
               className="ml-auto flex items-center gap-1.5 text-xs text-ink-faint transition-colors hover:text-oxford"
@@ -294,6 +314,11 @@ function HeroCurrentStage({
             <div className="flex-1">
               <p className="text-[10.5px] font-semibold uppercase tracking-[0.18em]" style={{ color: "rgba(240,217,160,0.8)" }}>
                 Your next move
+                {urgent && targetDays !== null ? (
+                  <span className="ml-2 normal-case tracking-normal" style={{ color: "#f0d9a0" }}>
+                    · gate {targetDays < 0 ? formatCountdown(targetDays) : `in ${formatCountdown(targetDays).replace(" left", "")}`} — every rehearsal counts
+                  </span>
+                ) : null}
               </p>
               <p className="mt-1.5 font-display text-[17px] leading-snug" style={{ color: "#f5f2ea" }}>
                 {move.text}
@@ -387,6 +412,11 @@ function HeroCurrentStage({
             <p className="mt-0.5 font-display text-[19px] text-ink">
               {instance?.target_date ? formatDate(instance.target_date) : "Not set"}
             </p>
+            {instance?.target_date ? (
+              <p className="mt-1.5 flex justify-center">
+                <CountdownChip date={instance.target_date} />
+              </p>
+            ) : null}
           </div>
         </div>
       </div>
@@ -562,12 +592,14 @@ function MilestoneCard({
   numeral,
   status,
   isCurrent,
+  targetDate,
   onSetCurrent,
 }: {
   stage: StageTemplate;
   numeral: string;
   status: StageStatus;
   isCurrent: boolean;
+  targetDate: string | null;
   onSetCurrent: () => void;
 }) {
   return (
@@ -586,6 +618,11 @@ function MilestoneCard({
         </span>
         <span className="ml-auto text-[11px]" style={{ color: "#b3bac2" }}>{stage.typicalTiming.label}</span>
       </div>
+      {status !== "passed" && targetDate ? (
+        <div className="-mt-0.5">
+          <CountdownChip date={targetDate} />
+        </div>
+      ) : null}
       <Link href={`/stages/${stage.id}`} className="font-display text-[19px] leading-tight text-ink hover:text-oxford">
         {stage.title}
       </Link>
@@ -781,6 +818,7 @@ export default function DashboardPage() {
                 numeral={ROMAN[i]}
                 status={byStage.get(stage.id)?.status ?? "upcoming"}
                 isCurrent={stage.id === currentStage.id}
+                targetDate={byStage.get(stage.id)?.target_date ?? null}
                 onSetCurrent={() => applyCurrentStage(stage.id)}
               />
             </div>
