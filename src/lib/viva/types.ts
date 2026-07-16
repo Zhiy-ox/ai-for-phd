@@ -6,6 +6,9 @@ export interface PanelStyle {
   intensity: "supportive" | "standard" | "hostile";
   // Optional area the candidate asked to be pressed on.
   focus?: string;
+  // Optional personality overrides: template persona id → archetype id from
+  // lib/viva/personalities.ts. Absent entries keep the persona as written.
+  personas?: Record<string, string>;
 }
 
 // Stored in sessions.config_json for viva sessions.

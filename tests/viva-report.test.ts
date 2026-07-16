@@ -319,4 +319,27 @@ describe("buildPanelSystemPrompt", () => {
       /assessment/,
     );
   });
+
+  it("swaps a persona's style for a chosen personality archetype, keeping name and role", () => {
+    const prompt = buildPanelSystemPrompt({
+      programme,
+      stage,
+      documents,
+      style: { intensity: "standard", personas: { internal: "statistician" } },
+    });
+    // Dr Chen keeps their name/role but speaks as The Statistician…
+    expect(prompt).toContain("[Dr Chen]");
+    expect(prompt).toContain("Distrusts every number until shown its uncertainty");
+    expect(prompt).not.toContain("Works through the report section by section");
+    // …while the unoverridden persona stays as written.
+    expect(prompt).toContain("Big-picture and comparative");
+    // Unknown archetype ids fall back to the template persona.
+    const fallback = buildPanelSystemPrompt({
+      programme,
+      stage,
+      documents,
+      style: { intensity: "standard", personas: { internal: "no-such-archetype" } },
+    });
+    expect(fallback).toContain("Works through the report section by section");
+  });
 });

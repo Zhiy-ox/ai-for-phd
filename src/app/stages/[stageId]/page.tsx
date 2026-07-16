@@ -10,6 +10,7 @@ import type { SessionRow } from "@/lib/db/repos/sessions";
 import type { ReportRow } from "@/lib/db/repos/reports";
 import type { ProviderId } from "@/lib/providers/types";
 import type { PanelStyle } from "@/lib/viva/types";
+import { getPersonality, PANEL_PERSONALITIES } from "@/lib/viva/personalities";
 import type { FindingRow, FindingStatus } from "@/lib/db/repos/findings";
 import {
   ACTIVITY_LABELS,
@@ -50,6 +51,18 @@ const STAGE_STATUSES: StageStatus[] = ["upcoming", "active", "passed", "referred
 /* Stage header: status, target date, notes                            */
 /* ------------------------------------------------------------------ */
 
+// Selected-pill accent per status — passed reads green, referred brass, &c.
+const STATUS_PILL_COLOR: Record<StageStatus, string> = {
+  upcoming: "#5b6673",
+  active: "#2953c4",
+  passed: "#2eb87a",
+  referred: "#a8843c",
+  locked: "#98a1ab",
+};
+
+const SOFT_INPUT =
+  "rounded-xl border border-line bg-white px-3.5 py-2 text-sm text-ink transition-all focus:border-oxford focus:shadow-[0_0_0_3px_rgba(41,83,196,0.12)] focus:outline-none";
+
 function StageHeader({
   stage,
   instance,
@@ -63,6 +76,7 @@ function StageHeader({
   const [targetDate, setTargetDate] = useState(instance?.target_date ?? "");
   const [notes, setNotes] = useState(instance?.notes ?? "");
   const [saving, setSaving] = useState(false);
+  const [savedFlash, setSavedFlash] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const dirty =
     status !== (instance?.status ?? "upcoming") ||
@@ -79,6 +93,8 @@ function StageHeader({
         { status, targetDate: targetDate || null, notes: notes || null },
       );
       onSaved(updated);
+      setSavedFlash(true);
+      setTimeout(() => setSavedFlash(false), 2200);
     } catch (err) {
       setError(messageOf(err));
     } finally {
@@ -88,45 +104,73 @@ function StageHeader({
 
   return (
     <Card className="p-5">
-      <div className="flex flex-wrap items-end gap-4">
-        <label className="text-sm text-ink-soft">
-          <span className="mb-1 block text-xs text-ink-faint">Status</span>
-          <select
-            value={status}
-            onChange={(e) => setStatus(e.target.value as StageStatus)}
-            className="rounded-lg border border-line bg-white px-2.5 py-1.5 text-sm text-ink focus:border-oxford focus:outline-none"
-          >
-            {STAGE_STATUSES.map((s) => (
-              <option key={s} value={s}>
-                {s}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label className="text-sm text-ink-soft">
-          <span className="mb-1 block text-xs text-ink-faint">Target date</span>
-          <input
-            type="date"
-            value={targetDate}
-            onChange={(e) => setTargetDate(e.target.value)}
-            className="rounded-lg border border-line bg-white px-2.5 py-1.5 text-sm text-ink focus:border-oxford focus:outline-none"
-          />
-        </label>
-        <label className="min-w-64 flex-1 text-sm text-ink-soft">
-          <span className="mb-1 block text-xs text-ink-faint">Notes</span>
-          <input
-            type="text"
-            value={notes}
-            onChange={(e) => setNotes(e.target.value)}
-            placeholder="e.g. assessors confirmed, submit report by week 2"
-            className="w-full rounded-lg border border-line bg-white px-2.5 py-1.5 text-sm text-ink focus:border-oxford focus:outline-none"
-          />
-        </label>
-        <Button variant="secondary" onClick={save} disabled={!dirty || saving}>
-          {saving ? <Spinner /> : null} Save
-        </Button>
+      <div className="flex flex-col gap-4">
+        <div>
+          <span className="mb-1.5 block text-xs text-ink-faint">Status</span>
+          <div className="inline-flex max-w-full flex-wrap gap-1 rounded-2xl border border-line bg-white p-1">
+            {STAGE_STATUSES.map((s) => {
+              const selected = status === s;
+              return (
+                <button
+                  key={s}
+                  type="button"
+                  onClick={() => setStatus(s)}
+                  className="rounded-xl px-3.5 py-1.5 text-[12.5px] font-medium capitalize transition-all duration-300 active:scale-[0.96]"
+                  style={
+                    selected
+                      ? {
+                          background: STATUS_PILL_COLOR[s],
+                          color: "#fff",
+                          boxShadow: `0 6px 14px -8px ${STATUS_PILL_COLOR[s]}`,
+                        }
+                      : { color: "#5b6673" }
+                  }
+                >
+                  {s}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+        <div className="flex flex-wrap items-end gap-3">
+          <label className="text-sm text-ink-soft">
+            <span className="mb-1.5 block text-xs text-ink-faint">Target date</span>
+            <input
+              type="date"
+              value={targetDate}
+              onChange={(e) => setTargetDate(e.target.value)}
+              className={SOFT_INPUT}
+            />
+          </label>
+          <label className="min-w-56 flex-1 text-sm text-ink-soft">
+            <span className="mb-1.5 block text-xs text-ink-faint">Notes</span>
+            <input
+              type="text"
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              placeholder="e.g. assessors confirmed, submit report by week 2"
+              className={`w-full ${SOFT_INPUT}`}
+            />
+          </label>
+          <div className="flex h-[38px] items-center">
+            {dirty ? (
+              <span className="anim-rise-sm">
+                <Button onClick={save} disabled={saving}>
+                  {saving ? <Spinner /> : null} Save
+                </Button>
+              </span>
+            ) : savedFlash ? (
+              <span className="anim-pop flex items-center gap-1.5 px-2 text-sm font-medium" style={{ color: "#1f7a52" }}>
+                <svg viewBox="0 0 10 10" className="h-3 w-3" aria-hidden="true">
+                  <path d="M2 5.2 4.2 7.4 8 3" stroke="currentColor" strokeWidth="1.8" fill="none" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+                Saved
+              </span>
+            ) : null}
+          </div>
+        </div>
       </div>
-      {error ? <p className="mt-2 text-sm text-red-700">{error}</p> : null}
+      {error ? <p className="anim-rise-sm mt-2 text-sm text-red-700">{error}</p> : null}
     </Card>
   );
 }
@@ -235,6 +279,17 @@ function DocumentsTab({ stage }: { stage: StageTemplate }) {
 /* Mock viva tab                                                       */
 /* ------------------------------------------------------------------ */
 
+// Preset interrogation targets offered as chips; the free-text field covers
+// anything document-specific ("the statistics in section 4").
+const TARGET_PRESETS = [
+  "methodology & controls",
+  "statistics & uncertainties",
+  "novelty of the contribution",
+  "literature positioning",
+  "feasibility of the plan",
+  "writing & clarity",
+];
+
 function VivaTab({ stage }: { stage: StageTemplate }) {
   const [docs, setDocs] = useState<DocumentSummary[] | null>(null);
   const [primary, setPrimary] = useState<string | null>(null);
@@ -243,6 +298,9 @@ function VivaTab({ stage }: { stage: StageTemplate }) {
   const [intensity, setIntensity] = useState<PanelStyle["intensity"]>("standard");
   const [mode, setMode] = useState<"viva" | "drill">("viva");
   const [focus, setFocus] = useState("");
+  const [targets, setTargets] = useState<Set<string>>(new Set());
+  // Persona id → personality archetype id; absent = as written in the template.
+  const [personas, setPersonas] = useState<Record<string, string>>({});
   const [starting, setStarting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const router = useRouter();
@@ -275,7 +333,13 @@ function VivaTab({ stage }: { stage: StageTemplate }) {
       const documentIds = primary
         ? [primary, ...[...supporting].filter((id) => id !== primary)]
         : [];
-      const style: PanelStyle = { intensity, focus: focus.trim() || undefined };
+      const focusParts = [...targets];
+      if (focus.trim()) focusParts.push(focus.trim());
+      const style: PanelStyle = {
+        intensity,
+        focus: focusParts.length ? focusParts.join("; ") : undefined,
+        personas: Object.keys(personas).length ? personas : undefined,
+      };
       const { session } = await apiSend<{ session: SessionRow }>("/api/sessions", "POST", {
         stageId: stage.id,
         provider,
@@ -296,18 +360,63 @@ function VivaTab({ stage }: { stage: StageTemplate }) {
     <div className="space-y-6">
       <Card className="p-5">
         <SectionLabel>Your panel</SectionLabel>
+        <p className="mt-1 text-xs text-ink-faint">
+          Each assessor&apos;s personality is yours to cast — rehearse against the examiner you fear.
+        </p>
         <div className="mt-3 grid gap-4 sm:grid-cols-2">
-          {panel.map((p, i) => (
-            <div
-              key={p.id}
-              className="anim-rise-sm rounded-lg bg-oxford-faint p-4"
-              style={{ "--d": `${i * 90}ms` } as CSSProperties}
-            >
-              <p className="font-display text-base text-oxford">{p.name}</p>
-              <p className="text-xs uppercase tracking-wide text-ink-faint">{p.role}</p>
-              <p className="mt-2 text-sm leading-relaxed text-ink-soft">{p.style}</p>
-            </div>
-          ))}
+          {panel.map((p, i) => {
+            const chosen = personas[p.id];
+            const archetype = chosen ? getPersonality(chosen) : undefined;
+            return (
+              <div
+                key={p.id}
+                className="anim-rise-sm rounded-lg bg-oxford-faint p-4"
+                style={{ "--d": `${i * 90}ms` } as CSSProperties}
+              >
+                <p className="font-display text-base text-oxford">{p.name}</p>
+                <p className="text-xs uppercase tracking-wide text-ink-faint">
+                  {p.role}
+                  {archetype ? ` · ${archetype.label}` : ""}
+                </p>
+                {/* Keyed so a personality change re-runs the entrance animation. */}
+                <p key={chosen ?? "as-written"} className="anim-fade mt-2 min-h-[60px] text-sm leading-relaxed text-ink-soft">
+                  {archetype ? archetype.style : p.style}
+                </p>
+                <div className="mt-3 flex flex-wrap gap-1.5">
+                  {[
+                    { id: undefined, label: "As written", blurb: "The template persona, unchanged." },
+                    ...PANEL_PERSONALITIES,
+                  ].map((opt) => {
+                    const selected = chosen === opt.id || (!chosen && opt.id === undefined);
+                    return (
+                      <button
+                        key={opt.id ?? "as-written"}
+                        type="button"
+                        disabled={starting}
+                        title={opt.blurb}
+                        onClick={() =>
+                          setPersonas((prev) => {
+                            const next = { ...prev };
+                            if (opt.id === undefined) delete next[p.id];
+                            else next[p.id] = opt.id;
+                            return next;
+                          })
+                        }
+                        className="rounded-full border px-2.5 py-1 text-[11px] font-medium transition-all duration-200 hover:-translate-y-px active:scale-[0.95]"
+                        style={
+                          selected
+                            ? { background: "#2953c4", borderColor: "#2953c4", color: "#fff", boxShadow: "0 6px 14px -8px rgba(41,83,196,0.8)" }
+                            : { background: "#fffdf8", borderColor: "var(--color-line)", color: "#5b6673" }
+                        }
+                      >
+                        {opt.label}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })}
         </div>
       </Card>
 
@@ -393,14 +502,46 @@ function VivaTab({ stage }: { stage: StageTemplate }) {
             </button>
           ))}
         </div>
-        <input
-          type="text"
-          value={focus}
-          onChange={(e) => setFocus(e.target.value)}
-          disabled={starting}
-          placeholder="Press me especially on… (optional, e.g. 'the statistics in section 4')"
-          className="mt-2.5 w-full rounded-xl border border-line bg-white px-3.5 py-2.5 text-sm text-ink focus:border-oxford focus:outline-none"
-        />
+        <div className="mt-3">
+          <p className="text-xs text-ink-faint">Press me especially on…</p>
+          <div className="mt-1.5 flex flex-wrap gap-1.5">
+            {TARGET_PRESETS.map((t) => {
+              const selected = targets.has(t);
+              return (
+                <button
+                  key={t}
+                  type="button"
+                  disabled={starting}
+                  onClick={() =>
+                    setTargets((prev) => {
+                      const next = new Set(prev);
+                      if (next.has(t)) next.delete(t);
+                      else next.add(t);
+                      return next;
+                    })
+                  }
+                  className="rounded-full border px-3 py-1.5 text-[12px] font-medium transition-all duration-200 hover:-translate-y-px active:scale-[0.95]"
+                  style={
+                    selected
+                      ? { background: "#0a1626", borderColor: "#0a1626", color: "#f0d9a0" }
+                      : { background: "#fffdf8", borderColor: "var(--color-line)", color: "#5b6673" }
+                  }
+                >
+                  {selected ? "✓ " : ""}
+                  {t}
+                </button>
+              );
+            })}
+          </div>
+          <input
+            type="text"
+            value={focus}
+            onChange={(e) => setFocus(e.target.value)}
+            disabled={starting}
+            placeholder="…or anything specific: 'the statistics in section 4' (optional)"
+            className="mt-2 w-full rounded-xl border border-line bg-white px-3.5 py-2.5 text-sm text-ink transition-all focus:border-oxford focus:shadow-[0_0_0_3px_rgba(41,83,196,0.12)] focus:outline-none"
+          />
+        </div>
       </div>
 
       <div>

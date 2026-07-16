@@ -218,6 +218,21 @@ standing weaknesses.
   Sessions empty states. Verified live: tour geometry, persistence, replay;
   stage tabs; review scorecard growBar.
 
+- ✅ **Elegant stage record + castable panel** (Claude, 2026-07-16; owner
+  directive). (a) StageHeader redesigned: the native status `<select>`
+  became a segmented pill control (selected pill colored per status:
+  active blue, passed green, referred brass), soft focus-ring inputs, and
+  a Save button that fades in only when dirty ("Saved ✓" flash after).
+  (b) Panel casting: `src/lib/viva/personalities.ts` defines six assessor
+  archetypes (Methodologist, Field Strategist, Statistician, Theorist,
+  Pragmatist, Literature Hawk); `PanelStyle.personas` maps template
+  persona id → archetype id, validated in the sessions POST schema;
+  `renderPersona` swaps style/focus while keeping name+role (unknown ids
+  fall back to the template; covered by a prompt test). VivaTab panel
+  cards gained per-assessor personality pills (description cross-fades on
+  change) and "Press me especially on…" preset target chips that combine
+  with the free-text focus. All verified live.
+
 ### Future roadmap (added 2026-07-11) — the next-gen todo list
 
 **M0 — Validation sprint (owner-led; before building more).** Run the real

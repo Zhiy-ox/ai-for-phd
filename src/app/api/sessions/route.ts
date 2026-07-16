@@ -16,6 +16,7 @@ const CreateBodySchema = z.object({
     .object({
       intensity: z.enum(["supportive", "standard", "hostile"]),
       focus: z.string().max(500).optional(),
+      personas: z.record(z.string(), z.string().max(60)).optional(),
     })
     .optional(),
   model: z.string().optional(),

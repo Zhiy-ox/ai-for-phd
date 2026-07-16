@@ -11,6 +11,7 @@ import {
 } from "@/lib/template";
 import type { PanelStyle, QuestionPlan, VivaAssessment } from "./types";
 import { VIVA_COMPLETE_TOKEN } from "./types";
+import { getPersonality } from "./personalities";
 
 // Keep prompts within a sane size even for very long extracted documents.
 const MAX_DOC_CHARS = 150_000;
@@ -20,11 +21,14 @@ function clipText(text: string, max: number = MAX_DOC_CHARS): string {
   return `${text.slice(0, max)}\n[... document truncated for length ...]`;
 }
 
-function renderPersona(p: PersonaTemplate): string {
+// A chosen personality archetype overrides the persona's style and focus
+// while keeping their name and role (the candidate picked who shows up).
+function renderPersona(p: PersonaTemplate, personalityId?: string): string {
+  const archetype = personalityId ? getPersonality(personalityId) : undefined;
   return [
     `### [${p.name}] — ${p.role}`,
-    `Style: ${p.style}`,
-    `Focus areas: ${p.focus.join(", ")}`,
+    `Style: ${archetype ? archetype.style : p.style}`,
+    `Focus areas: ${(archetype ? archetype.focus : p.focus).join(", ")}`,
   ].join("\n");
 }
 
@@ -99,7 +103,13 @@ export function buildPanelSystemPrompt(args: {
   );
 
   parts.push(
-    ["# The panel", "", "You play these two assessors, exactly as described:", "", assessment.panel.map(renderPersona).join("\n\n")].join("\n"),
+    [
+      "# The panel",
+      "",
+      "You play these two assessors, exactly as described:",
+      "",
+      assessment.panel.map((p) => renderPersona(p, panelStyle?.personas?.[p.id])).join("\n\n"),
+    ].join("\n"),
   );
 
   parts.push(
