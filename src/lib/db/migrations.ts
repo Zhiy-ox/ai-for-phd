@@ -92,4 +92,71 @@ export const MIGRATIONS: string[] = [
   `
   ALTER TABLE sessions ADD COLUMN title TEXT;
   `,
+  // v5 — programme ownership for user-created documents and sessions. Session
+  // configs already carried programmeId, so preserve registered ids where
+  // present; invalid/retired ids and config-less rows fall back to the valid
+  // selected programme, then the built-in default. A document takes the
+  // programme of the earliest session that examined it, so switching
+  // programmes before upgrading cannot orphan a document from its sessions.
+  `
+  ALTER TABLE documents ADD COLUMN programme_id TEXT;
+  ALTER TABLE sessions ADD COLUMN programme_id TEXT;
+
+  UPDATE documents
+  SET programme_id = COALESCE(
+    (
+      SELECT TRIM(json_extract(s.config_json, '$.programmeId'))
+      FROM sessions s
+      WHERE json_valid(s.config_json)
+        AND json_type(s.config_json, '$.programmeId') = 'text'
+        AND TRIM(json_extract(s.config_json, '$.programmeId'))
+          IN ('oxford-dphil', 'generic-uk-phd', 'us-phd')
+        AND EXISTS (
+          SELECT 1
+          FROM json_each(
+            CASE WHEN json_valid(s.config_json) THEN s.config_json ELSE '{}' END,
+            '$.documentIds'
+          ) j
+          WHERE j.value = documents.id
+        )
+      ORDER BY s.created_at ASC
+      LIMIT 1
+    ),
+    CASE
+      WHEN TRIM(COALESCE(
+        (SELECT value FROM settings WHERE key = 'programme_id'),
+        ''
+      )) IN ('oxford-dphil', 'generic-uk-phd', 'us-phd')
+      THEN TRIM((SELECT value FROM settings WHERE key = 'programme_id'))
+    END,
+    'oxford-dphil'
+  )
+  WHERE programme_id IS NULL;
+
+  UPDATE sessions
+  SET programme_id = COALESCE(
+    CASE
+      WHEN json_valid(config_json) THEN CASE
+        WHEN json_type(config_json, '$.programmeId') = 'text'
+          AND TRIM(json_extract(config_json, '$.programmeId'))
+            IN ('oxford-dphil', 'generic-uk-phd', 'us-phd')
+        THEN TRIM(json_extract(config_json, '$.programmeId'))
+      END
+    END,
+    CASE
+      WHEN TRIM(COALESCE(
+        (SELECT value FROM settings WHERE key = 'programme_id'),
+        ''
+      )) IN ('oxford-dphil', 'generic-uk-phd', 'us-phd')
+      THEN TRIM((SELECT value FROM settings WHERE key = 'programme_id'))
+    END,
+    'oxford-dphil'
+  )
+  WHERE programme_id IS NULL;
+
+  CREATE INDEX idx_documents_programme_stage
+    ON documents(programme_id, stage_id, created_at DESC);
+  CREATE INDEX idx_sessions_programme_stage
+    ON sessions(programme_id, stage_id, status, created_at DESC);
+  `,
 ];

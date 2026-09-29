@@ -12,7 +12,7 @@ import {
   updateFindingStatus,
   type FindingRow,
 } from "@/lib/db/repos/findings";
-import { completeJsonWithRetry } from "@/lib/shared/json-extract";
+import { completeJsonWithUsageTracking } from "@/lib/providers/usage-completion";
 import { buildAssessmentPrompt, VivaAssessmentSchema } from "./prompts";
 import type { VivaAssessment, VivaConfig } from "./types";
 
@@ -39,7 +39,7 @@ export async function generateAssessment(
     messages,
     standingWeaknesses: standing.map((f) => ({ id: f.id, description: f.description })),
   });
-  const result = await completeJsonWithRetry(
+  const result = await completeJsonWithUsageTracking(
     provider,
     { systemPrompt, userMessage, model: config.model },
     VivaAssessmentSchema,

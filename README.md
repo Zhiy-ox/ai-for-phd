@@ -4,8 +4,8 @@
 structures the PhD as a journey of formal gates — upgrade/transfer viva,
 confirmation, papers & rebuttals, thesis, final defence — and lets AI both
 help you produce the documents and **play the institutional counterpart**:
-assessors grilling you in a mock viva, Reviewer 2 attacking your manuscript,
-a senior reviewer scoring your drafts against the departmental rubric.
+assessors grilling you in a mock viva, three written reviewers critiquing your
+manuscript, and a senior reviewer scoring drafts against the departmental rubric.
 
 - **No API keys, no cloud.** Runs on your machine, on Claude/ChatGPT
   subscriptions you already have. Your unpublished research never leaves
@@ -28,9 +28,10 @@ a senior reviewer scoring your drafts against the departmental rubric.
 - **Confirmation of Status** — same workflow against a completion-focused
   panel (Dr Okafor / Prof Lindqvist): progress since transfer, thesis outline,
   timetable to submission (GSO.14).
-- **Papers & Rebuttals** — upload a manuscript and (optionally) the real
-  referee reports, then spar with Reviewer 2 and an associate editor before
-  writing the actual response letter. Verdict: minor / major revision / reject.
+- **Papers & Rebuttals** — upload a manuscript and receive a realistic written
+  packet from Reviewer 1, Reviewer 2, and Reviewer 3. Reviewer 2 is always the
+  toughest. Turn the numbered comments directly into an editable point-by-point
+  response letter—no live-viva interaction.
 - **Thesis Writing** — chapter-by-chapter feedback against a thesis rubric
   (argument, structure, rigor, literature, prose). Review-only: no panel here.
 - **Final Viva** — the full viva voce against an internal examiner (Dr Rahimi,

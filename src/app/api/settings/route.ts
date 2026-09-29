@@ -1,14 +1,22 @@
 import { z } from "zod";
 import { getSettings, setSettings } from "@/lib/db/repos/settings";
+import { listProgrammes } from "@/lib/template";
 
 export const dynamic = "force-dynamic";
+
+const programmeIds = listProgrammes().map((programme) => programme.id);
+const ProgrammeIdSchema = z.string().refine((id) => programmeIds.includes(id), {
+  message: `Unknown programme. Choose one of: ${programmeIds.join(", ")}`,
+});
 
 const PutBodySchema = z.object({
   default_provider: z.enum(["claude", "codex"]).optional(),
   claude_model: z.string().optional(),
   codex_model: z.string().optional(),
   current_stage: z.string().optional(),
-  programme_id: z.string().optional(),
+  // Empty is the persisted sentinel for "use the built-in default" on a
+  // fresh install; every non-empty value must name a registered template.
+  programme_id: z.union([z.literal(""), ProgrammeIdSchema]).optional(),
   onboarded: z.string().optional(),
 });
 

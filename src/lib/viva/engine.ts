@@ -1,6 +1,6 @@
 // Mock-viva session engine: session lifecycle + one streamed turn at a time.
 // Implements the contracts documented in ./types.ts.
-import { getProgramme, getStage } from "@/lib/template";
+import { getProgramme, getStage, hasLivePanel } from "@/lib/template";
 import { getActiveProgrammeId } from "@/lib/programme";
 import type { ChatMessage, ProviderId, TurnRequest } from "@/lib/providers/types";
 import { getProvider, resolveProviderAndModel } from "@/lib/providers/registry";
@@ -16,7 +16,7 @@ import {
 import { getDocument } from "@/lib/db/repos/documents";
 import { listFindings } from "@/lib/db/repos/findings";
 import type { ReportRow } from "@/lib/db/repos/reports";
-import { clearUsageLimit, recordUsageLimit } from "@/lib/providers/usage";
+import { trackStreamUsage } from "@/lib/providers/usage";
 import { buildPanelSystemPrompt, parseSpeakerTag, stripVivaCompleteToken } from "./prompts";
 import { generateQuestionPlan } from "./planner";
 import { generateAssessment } from "./report";
@@ -25,10 +25,18 @@ import type { PanelStyle, SessionEvent, VivaConfig } from "./types";
 const BEGIN_MESSAGE =
   "(The candidate has entered the room. Introduce the panel briefly and ask your first question.)";
 
-function loadVivaDocuments(documentIds: string[]): { title: string; text: string }[] {
+function loadVivaDocuments(
+  documentIds: string[],
+  programmeId: string,
+): { title: string; text: string }[] {
   return documentIds.map((id) => {
     const doc = getDocument(id);
     if (!doc) throw new Error(`Document not found: ${id}`);
+    if (doc.programme_id !== programmeId) {
+      throw new Error(
+        `Document "${doc.filename}" belongs to programme "${doc.programme_id}", not this session's programme "${programmeId}". Switch programmes or choose a document from the current programme.`,
+      );
+    }
     if (!doc.extracted_text) {
       throw new Error(
         `Document "${doc.filename}" has no extracted text — re-upload a supported file or paste its text before the viva.`,
@@ -52,11 +60,16 @@ export async function startVivaSession(opts: {
   }
   const programmeId = getActiveProgrammeId();
   const stage = getStage(programmeId, opts.stageId);
-  if (!stage.assessment) {
+  if (!hasLivePanel(stage)) {
+    if (stage.assessment?.interaction === "written_peer_review") {
+      throw new Error(
+        `Stage "${stage.id}" uses written reviewer comments, not a live viva session.`,
+      );
+    }
     throw new Error(`Stage "${stage.id}" does not define a viva panel.`);
   }
+  const documents = loadVivaDocuments(opts.documentIds, programmeId);
   const { provider, model } = resolveProviderAndModel(opts);
-  const documents = loadVivaDocuments(opts.documentIds);
   // Drills skip the planner: they are cheap, fast, and steered by the
   // weakness ledger instead of a prepared question map.
   const questionPlan =
@@ -73,7 +86,13 @@ export async function startVivaSession(opts: {
     style: opts.style,
     mode,
   };
-  return createSession({ type: "viva", stageId: stage.id, provider: provider.id, config });
+  return createSession({
+    programmeId,
+    type: "viva",
+    stageId: stage.id,
+    provider: provider.id,
+    config,
+  });
 }
 
 export async function* submitUtterance(
@@ -94,10 +113,21 @@ export async function* submitUtterance(
   const config = JSON.parse(session.config_json) as VivaConfig;
   const programme = getProgramme(config.programmeId);
   const stage = getStage(config.programmeId, config.stageId);
+  if (!hasLivePanel(stage)) {
+    yield {
+      type: "error",
+      code: "session_ended",
+      message:
+        stage.assessment?.interaction === "written_peer_review"
+          ? "This legacy paper session is read-only. Open Reviewer comments to receive written feedback."
+          : "This stage does not support live panel turns.",
+    };
+    return;
+  }
 
   let documents: { title: string; text: string }[];
   try {
-    documents = loadVivaDocuments(config.documentIds);
+    documents = loadVivaDocuments(config.documentIds, config.programmeId);
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     yield { type: "error", code: "unknown", message };
@@ -150,7 +180,8 @@ export async function* submitUtterance(
   };
 
   const provider = getProvider(config.provider);
-  for await (const event of provider.streamTurn(req, signal)) {
+  for await (const rawEvent of provider.streamTurn(req, signal)) {
+    const event = trackStreamUsage(config.provider, rawEvent);
     switch (event.type) {
       case "session":
         setProviderSessionRef(sessionId, event.sessionRef);
@@ -159,7 +190,6 @@ export async function* submitUtterance(
         yield { type: "panel_delta", text: event.text };
         break;
       case "done": {
-        clearUsageLimit(config.provider);
         const { content, concluded } = stripVivaCompleteToken(event.fullText);
         if (concluded) endSession(sessionId);
         const row = appendMessage({
@@ -173,9 +203,6 @@ export async function* submitUtterance(
         break;
       }
       case "error":
-        // Remember usage-window hits so session setup can steer the user
-        // to the other backend until this one resets.
-        if (event.code === "usage_limit") recordUsageLimit(config.provider);
         // Do not persist a panel message and do not end the session — the
         // candidate can retry the turn once the underlying issue is fixed.
         yield { type: "error", code: event.code, message: event.message };
@@ -185,6 +212,13 @@ export async function* submitUtterance(
 }
 
 export async function endViva(sessionId: string, signal?: AbortSignal): Promise<ReportRow> {
+  const current = getSession(sessionId);
+  if (!current) throw new Error(`Session not found: ${sessionId}`);
+  const config = JSON.parse(current.config_json) as VivaConfig;
+  const stage = getStage(config.programmeId, config.stageId);
+  if (!hasLivePanel(stage)) {
+    throw new Error("This legacy paper session is read-only and cannot produce a viva assessment.");
+  }
   const report = await generateAssessment(sessionId, signal);
   const session = getSession(sessionId);
   if (session && session.status === "active") endSession(sessionId);

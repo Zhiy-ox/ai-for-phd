@@ -12,11 +12,30 @@ export interface DocReviewSection {
   suggestion: string;
 }
 
+export type PeerReviewerId = "reviewer_1" | "reviewer_2" | "reviewer_3";
+
+export interface PeerReviewSection extends DocReviewSection {
+  reviewer: PeerReviewerId;
+}
+
 export interface DocReviewResult {
   summary: string;
   criteria: { id: string; score: number; comments: string }[];
   sections: DocReviewSection[];
   top_actions: string[];
+}
+
+export interface PeerReviewResult extends DocReviewResult {
+  format: "peer_review";
+  recommendation: "accept" | "minor_revision" | "major_revision" | "reject";
+  reviewer_summaries: Record<PeerReviewerId, string>;
+  sections: PeerReviewSection[];
+}
+
+export type ReviewResult = DocReviewResult | PeerReviewResult;
+
+export function isPeerReviewResult(review: ReviewResult): review is PeerReviewResult {
+  return "format" in review && review.format === "peer_review";
 }
 
 // Contract implemented in run.ts:

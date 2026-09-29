@@ -11,6 +11,7 @@ import {
 } from "@/lib/db/repos/documents";
 import { EXTRACTABLE_EXTENSIONS } from "@/lib/extraction/types";
 import { extractText } from "@/lib/extraction/extract";
+import { getActiveProgrammeId } from "@/lib/programme";
 
 export const dynamic = "force-dynamic";
 
@@ -37,7 +38,9 @@ export async function GET(request: Request): Promise<Response> {
       }
       kind = parsed.data;
     }
-    return Response.json({ documents: listDocuments({ stageId, kind }) });
+    return Response.json({
+      documents: listDocuments({ programmeId: getActiveProgrammeId(), stageId, kind }),
+    });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     return Response.json({ error: message }, { status: 500 });
@@ -80,6 +83,7 @@ export async function POST(request: Request): Promise<Response> {
     await writeFile(filePath, Buffer.from(await file.arrayBuffer()));
 
     const row = insertDocument({
+      programmeId: getActiveProgrammeId(),
       filename: file.name,
       kind: kindParsed.data,
       stageId,

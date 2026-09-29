@@ -6,6 +6,7 @@ export type SessionStatus = "active" | "ended" | "errored";
 
 export interface SessionRow {
   id: string;
+  programme_id: string;
   type: SessionType;
   stage_id: string;
   provider: ProviderId;
@@ -30,6 +31,7 @@ export interface MessageRow {
 }
 
 export function createSession(s: {
+  programmeId: string;
   type: SessionType;
   stageId: string;
   provider: ProviderId;
@@ -38,10 +40,19 @@ export function createSession(s: {
   const id = newId();
   getDb()
     .prepare(
-      `INSERT INTO sessions (id, type, stage_id, provider, config_json, created_at)
-       VALUES (?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO sessions
+         (id, programme_id, type, stage_id, provider, config_json, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
     )
-    .run(id, s.type, s.stageId, s.provider, JSON.stringify(s.config ?? {}), nowIso());
+    .run(
+      id,
+      s.programmeId,
+      s.type,
+      s.stageId,
+      s.provider,
+      JSON.stringify(s.config ?? {}),
+      nowIso(),
+    );
   return getSession(id)!;
 }
 
@@ -51,11 +62,16 @@ export function getSession(id: string): SessionRow | null {
 }
 
 export function listSessions(filter?: {
+  programmeId?: string;
   type?: SessionType;
   stageId?: string;
 }): SessionRow[] {
   const clauses: string[] = [];
   const values: string[] = [];
+  if (filter?.programmeId) {
+    clauses.push("programme_id = ?");
+    values.push(filter.programmeId);
+  }
   if (filter?.type) {
     clauses.push("type = ?");
     values.push(filter.type);

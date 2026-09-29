@@ -6,7 +6,7 @@ import { z } from "zod";
 import type { LLMProvider } from "@/lib/providers/types";
 import { getSessionStyle, type StageTemplate } from "@/lib/template";
 import type { QuestionPlan } from "./types";
-import { completeJsonWithRetry } from "@/lib/shared/json-extract";
+import { completeJsonWithUsageTracking } from "@/lib/providers/usage-completion";
 
 const MAX_PLAN_DOC_CHARS = 120_000;
 
@@ -94,7 +94,7 @@ export async function generateQuestionPlan(
     "Produce the question plan now as a single fenced ```json code block. Output nothing outside the block.",
   ].join("\n");
 
-  const result = await completeJsonWithRetry(
+  const result = await completeJsonWithUsageTracking(
     provider,
     { systemPrompt, userMessage, model },
     QuestionPlanSchema,

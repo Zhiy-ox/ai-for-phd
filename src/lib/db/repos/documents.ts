@@ -11,6 +11,7 @@ export type DocumentKind =
 
 export interface DocumentRow {
   id: string;
+  programme_id: string;
   filename: string;
   kind: DocumentKind;
   stage_id: string | null;
@@ -28,6 +29,7 @@ export type DocumentSummary = Omit<DocumentRow, "extracted_text"> & {
 };
 
 export function insertDocument(doc: {
+  programmeId: string;
   filename: string;
   kind: DocumentKind;
   stageId?: string | null;
@@ -37,9 +39,10 @@ export function insertDocument(doc: {
   const id = newId();
   const now = nowIso();
   db.prepare(
-    `INSERT INTO documents (id, filename, kind, stage_id, file_path, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?)`,
-  ).run(id, doc.filename, doc.kind, doc.stageId ?? null, doc.filePath, now, now);
+    `INSERT INTO documents
+       (id, programme_id, filename, kind, stage_id, file_path, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+  ).run(id, doc.programmeId, doc.filename, doc.kind, doc.stageId ?? null, doc.filePath, now, now);
   return getDocument(id)!;
 }
 
@@ -49,11 +52,16 @@ export function getDocument(id: string): DocumentRow | null {
 }
 
 export function listDocuments(filter?: {
+  programmeId?: string;
   stageId?: string;
   kind?: DocumentKind;
 }): DocumentSummary[] {
   const clauses: string[] = [];
   const values: string[] = [];
+  if (filter?.programmeId) {
+    clauses.push("programme_id = ?");
+    values.push(filter.programmeId);
+  }
   if (filter?.stageId) {
     clauses.push("stage_id = ?");
     values.push(filter.stageId);
@@ -65,7 +73,7 @@ export function listDocuments(filter?: {
   const where = clauses.length ? `WHERE ${clauses.join(" AND ")}` : "";
   const rows = getDb()
     .prepare(
-      `SELECT id, filename, kind, stage_id, file_path,
+      `SELECT id, programme_id, filename, kind, stage_id, file_path,
               extracted_text IS NOT NULL AS has_text,
               extract_error, char_count, created_at, updated_at
        FROM documents ${where} ORDER BY created_at DESC`,

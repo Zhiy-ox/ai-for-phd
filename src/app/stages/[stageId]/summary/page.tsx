@@ -6,12 +6,17 @@
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useEffect, useMemo, useState, type CSSProperties } from "react";
-import type { ProgrammeTemplate, StageTemplate } from "@/lib/template";
+import {
+  hasLivePanel,
+  hasWrittenPeerReview,
+  type ProgrammeTemplate,
+  type StageTemplate,
+} from "@/lib/template";
 import type { StageInstance } from "@/lib/db/repos/stage-instances";
-import type { DocumentSummary } from "@/lib/db/repos/documents";
 import type { SessionRow } from "@/lib/db/repos/sessions";
 import type { ReportRow } from "@/lib/db/repos/reports";
 import type { FindingRow } from "@/lib/db/repos/findings";
+import type { StageActivity } from "@/lib/db/repos/stage-activity";
 import { apiGet, formatDate, formatDateTime, messageOf } from "@/components/api";
 import { daysUntil, formatCountdown } from "@/lib/dates";
 import { Button, ErrorBanner, PageLoading } from "@/components/ui";
@@ -45,6 +50,17 @@ function parseScores(report: ReportRow): ScoredCriterion[] | null {
   }
 }
 
+// The same discriminator the stage-activity query uses ($.format), so the
+// summary and the stepper agree on what counts as a written peer review.
+function isPeerReviewReport(report: ReportRow): boolean {
+  if (report.type !== "doc_review" || !report.rubric_json) return false;
+  try {
+    return (JSON.parse(report.rubric_json) as { format?: unknown }).format === "peer_review";
+  } catch {
+    return false;
+  }
+}
+
 function criterionTitles(stage: StageTemplate): Map<string, string> {
   const map = new Map<string, string>();
   stage.reviewRubric?.forEach((c) => map.set(c.id, c.title));
@@ -69,7 +85,7 @@ export default function GateSummaryPage() {
   const [data, setData] = useState<{
     programme: ProgrammeTemplate;
     instance: StageInstance | null;
-    docs: DocumentSummary[];
+    activity: StageActivity;
     sessions: SessionRow[];
     reports: ReportRow[];
     findings: FindingRow[];
@@ -77,31 +93,28 @@ export default function GateSummaryPage() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    const stage = encodeURIComponent(stageId);
     Promise.all([
       apiGet<ProgrammeResponse>("/api/programme"),
-      apiGet<{ documents: DocumentSummary[] }>(`/api/documents?stageId=${stageId}`),
-      apiGet<{ sessions: SessionRow[] }>(`/api/sessions?stageId=${stageId}`),
-      apiGet<{ reports: ReportRow[] }>("/api/reports"),
-      apiGet<{ findings: FindingRow[] }>(`/api/findings?stageId=${stageId}`).catch(() => ({
+      // Readiness comes from the same endpoint as the dashboard and stepper,
+      // so the printed sheet can never claim more than the app shows.
+      apiGet<{ activity: StageActivity }>(`/api/stages/${stage}/activity`),
+      apiGet<{ sessions: SessionRow[] }>(`/api/sessions?stageId=${stage}`),
+      apiGet<{ reports: ReportRow[] }>(`/api/reports?stageId=${stage}`),
+      apiGet<{ findings: FindingRow[] }>(`/api/findings?stageId=${stage}`).catch(() => ({
         findings: [] as FindingRow[],
       })),
     ])
-      .then(([prog, d, s, r, f]) => {
-        const sessionIds = new Set(s.sessions.map((x) => x.id));
-        const docIds = new Set(d.documents.map((x) => x.id));
+      .then(([prog, a, s, r, f]) =>
         setData({
           programme: prog.programme,
           instance: prog.instances.find((i) => i.stage_id === stageId) ?? null,
-          docs: d.documents,
+          activity: a.activity,
           sessions: s.sessions,
           findings: f.findings,
-          reports: r.reports.filter(
-            (rep) =>
-              (rep.session_id && sessionIds.has(rep.session_id)) ||
-              (rep.document_id && docIds.has(rep.document_id)),
-          ),
-        });
-      })
+          reports: r.reports,
+        }),
+      )
       .catch((e) => setError(messageOf(e)));
   }, [stageId]);
 
@@ -114,12 +127,31 @@ export default function GateSummaryPage() {
   if (!data) return <PageLoading label="Assembling the summary…" />;
   if (!stage) return <ErrorBanner tone="red" message={`Unknown stage: ${stageId}`} />;
 
-  const { programme, instance, docs, sessions, reports, findings } = data;
+  const { programme, instance, activity, sessions, reports, findings } = data;
   const titles = criterionTitles(stage);
-  const readable = docs.filter((d) => d.has_text);
-  const latestScored = reports.find((r) => parseScores(r));
-  const scores = latestScored ? parseScores(latestScored)! : null;
-  const latestVerdictReport = reports.find((r) => r.type === "viva_assessment" && r.verdict);
+  const peerReview = hasWrittenPeerReview(stage);
+  const peerReviewIds = new Set(reports.filter(isPeerReviewReport).map((r) => r.id));
+  const reviewReports = reports.filter(
+    (report) => report.type === "doc_review" && (!peerReview || peerReviewIds.has(report.id)),
+  );
+  // Newest scored report of either kind: a mock-viva assessment is the
+  // strongest readiness signal, so it must not be skipped for an older review.
+  let latestScored: ReportRow | null = null;
+  let scores: ScoredCriterion[] | null = null;
+  for (const report of reports) {
+    if (report.type !== "viva_assessment" && !reviewReports.includes(report)) continue;
+    const parsed = parseScores(report);
+    if (parsed) {
+      latestScored = report;
+      scores = parsed;
+      break;
+    }
+  }
+  const latestVerdictReport = reports.find(
+    (r) =>
+      Boolean(r.verdict) &&
+      (r.type === "viva_assessment" || (peerReview && peerReviewIds.has(r.id))),
+  );
   const verdictLabel = latestVerdictReport
     ? (stage.assessment?.verdicts.find((v) => v.id === latestVerdictReport.verdict)?.label ??
       latestVerdictReport.verdict)
@@ -136,10 +168,18 @@ export default function GateSummaryPage() {
   });
   const drills = sessions.length - vivas.length;
   const targetDays = instance?.target_date ? daysUntil(instance.target_date) : null;
+  const reviewCount = reviewReports.length;
+  const responseCount = reports.filter((r) => r.type === "rebuttal_letter").length;
   const readiness = [
-    { label: "Document uploaded", done: readable.length > 0 },
-    { label: "Feedback in hand", done: reports.length > 0 },
-    ...(stage.assessment ? [{ label: "Panel faced", done: sessions.length > 0 }] : []),
+    { label: "Document uploaded", done: activity.readable > 0 },
+    {
+      label: peerReview ? "Reviewer comments received" : "Feedback in hand",
+      done: activity.reviews > 0,
+    },
+    // An abandoned or errored session is not a faced panel.
+    ...(hasLivePanel(stage)
+      ? [{ label: "Panel faced", done: activity.panelState === "complete" }]
+      : []),
   ];
 
   return (
@@ -193,26 +233,39 @@ export default function GateSummaryPage() {
           ))}
         </ul>
         <p className="mt-2 text-[13px] text-ink-soft">
-          {reports.filter((r) => r.type === "doc_review").length} rubric review
-          {reports.filter((r) => r.type === "doc_review").length === 1 ? "" : "s"} ·{" "}
-          {vivas.length} mock session{vivas.length === 1 ? "" : "s"}
-          {drills > 0 ? ` · ${drills} quick-fire drill${drills === 1 ? "" : "s"}` : ""}
+          {peerReview ? (
+            <>
+              {reviewCount} written reviewer packet{reviewCount === 1 ? "" : "s"} · {responseCount}{" "}
+              response letter{responseCount === 1 ? "" : "s"}
+            </>
+          ) : (
+            <>
+              {reviewCount} rubric review{reviewCount === 1 ? "" : "s"} · {vivas.length} mock
+              session{vivas.length === 1 ? "" : "s"}
+              {drills > 0 ? ` · ${drills} quick-fire drill${drills === 1 ? "" : "s"}` : ""}
+            </>
+          )}
           {verdictLabel ? (
             <>
               {" "}
-              · latest panel verdict: <strong className="font-semibold text-ink">{verdictLabel}</strong>
+              · latest {peerReview ? "editorial recommendation" : "panel verdict"}:{" "}
+              <strong className="font-semibold text-ink">{verdictLabel}</strong>
             </>
           ) : null}
         </p>
       </section>
 
-      {scores ? (
+      {scores && latestScored ? (
         <section className="anim-rise mb-7" style={{ "--d": "120ms" } as CSSProperties}>
           <h2 className="text-[11px] font-semibold uppercase tracking-[0.24em] text-ink-faint">
             Latest rubric scores{" "}
             <span className="normal-case tracking-normal">
-              ({latestScored!.type === "viva_assessment" ? "panel assessment" : "document review"},{" "}
-              {formatDate(latestScored!.created_at)})
+              ({latestScored.type === "viva_assessment"
+                ? "panel assessment"
+                : peerReview
+                  ? "written peer review"
+                  : "document review"},{" "}
+              {formatDate(latestScored.created_at)})
             </span>
           </h2>
           <table className="mt-2.5 w-full text-sm">

@@ -5,7 +5,7 @@ import { useParams, useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState, type CSSProperties } from "react";
 import type { MessageRow, SessionRow } from "@/lib/db/repos/sessions";
 import type { ReportRow } from "@/lib/db/repos/reports";
-import { findStage, getSessionStyle } from "@/lib/template";
+import { findStage, getSessionStyle, hasWrittenPeerReview, type StageTemplate } from "@/lib/template";
 import { apiGet, apiSend, messageOf } from "@/components/api";
 import { streamSessionEvents } from "@/components/use-sse-stream";
 import { cancelSpeech, speakAloud, useSpeechRecognition } from "@/components/use-speech";
@@ -25,15 +25,15 @@ interface ChatEntry {
 }
 
 // "Mock viva — Transfer of Status", "Rebuttal sparring — Papers & Rebuttals", …
-function sessionTitle(stageId: string): string {
-  const stage = findStage(stageId);
+function sessionTitle(stage: StageTemplate | undefined): string {
   if (!stage) return "Session";
+  if (hasWrittenPeerReview(stage)) return `Legacy rebuttal session — ${stage.title}`;
   return `${getSessionStyle(stage).label} — ${stage.title}`;
 }
 
 // The assessor personas for the panel bench.
-function panelFor(stageId: string): { id: string; name: string; role: string }[] {
-  return findStage(stageId)?.assessment?.panel ?? [];
+function panelFor(stage: StageTemplate | undefined): { id: string; name: string; role: string }[] {
+  return stage?.assessment?.panel ?? [];
 }
 
 // Panel utterances open with "[Dr Chen]" / "[Prof Whitfield]". Pull the tag
@@ -232,7 +232,13 @@ export default function VivaRoomPage() {
         );
         if (r.session.status === "ended") setConcluded(true);
         // Fresh active session: elicit the panel's opening.
-        if (r.session.status === "active" && r.messages.length === 0 && !begunRef.current) {
+        const loadedStage = findStage(r.session.stage_id, r.session.programme_id);
+        if (
+          r.session.status === "active" &&
+          r.messages.length === 0 &&
+          !begunRef.current &&
+          !(loadedStage && hasWrittenPeerReview(loadedStage))
+        ) {
           begunRef.current = true;
           void runTurn("");
         }
@@ -303,17 +309,47 @@ export default function VivaRoomPage() {
       return false;
     }
   })();
+  // Shared stage ids (papers, thesis, final-viva) exist in several
+  // programmes, so always resolve against the session's own programme.
+  const sessionStage = session ? findStage(session.stage_id, session.programme_id) : undefined;
+  const legacyWrittenReview = Boolean(sessionStage && hasWrittenPeerReview(sessionStage));
   const supportsRebuttal = Boolean(
-    findStage(session?.stage_id ?? "")?.activities.includes("rebuttal_roleplay"),
+    sessionStage?.activities.some((activity) =>
+      activity === "rebuttal_roleplay" || activity === "peer_review",
+    ),
   );
-  const canSpeak = session.status === "active" && !concluded && !assessing;
-  const panel = panelFor(session.stage_id);
+  const canSpeak =
+    session.status === "active" && !concluded && !assessing && !legacyWrittenReview;
+  const panel = panelFor(sessionStage);
 
   return (
     <div
       className="mx-auto flex max-w-[880px] flex-col px-5 pb-9 pt-7 md:px-9"
       style={{ height: "calc(100vh - 64px)", boxSizing: "border-box" }}
     >
+      {legacyWrittenReview ? (
+        <div
+          role="status"
+          className="mb-4 flex flex-wrap items-center gap-3 rounded-xl px-4 py-3 text-sm"
+          style={{
+            border: "1px solid rgba(240,217,160,0.35)",
+            background: "rgba(240,217,160,0.08)",
+            color: "rgba(245,242,234,0.82)",
+          }}
+        >
+          <span className="min-w-0 flex-1">
+            This legacy live rebuttal is archived and read-only. Paper feedback now arrives as
+            numbered comments from Reviewer 1, Reviewer 2, and Reviewer 3.
+          </span>
+          <Link
+            href={`/stages/${session.stage_id}?step=feedback`}
+            className="rounded-full px-4 py-2 text-xs font-semibold"
+            style={{ border: "1px solid rgba(240,217,160,0.4)", color: "#f0d9a0" }}
+          >
+            Open reviewer comments →
+          </Link>
+        </div>
+      ) : null}
       {/* Panel bench */}
       <div className="flex flex-wrap items-center gap-3.5 pb-5">
         <div className="flex flex-wrap gap-2.5">
@@ -348,7 +384,7 @@ export default function VivaRoomPage() {
                 return !v;
               });
             }}
-            title="Read the panel's questions aloud"
+            title={legacyWrittenReview ? "Read the archived transcript aloud" : "Read the panel's questions aloud"}
             className="flex items-center gap-1.5 rounded-full px-4 py-2 text-[12.5px] font-medium transition-colors"
             style={{
               border: "1px solid rgba(255,255,255,0.15)",
@@ -362,7 +398,7 @@ export default function VivaRoomPage() {
             </svg>
             Read aloud {readAloud ? "on" : "off"}
           </button>
-          {supportsRebuttal && session.status === "ended" ? (
+          {supportsRebuttal && (session.status === "ended" || legacyWrittenReview) ? (
             rebuttalReport ? (
               <Link
                 href={`/reports/${rebuttalReport.id}`}
@@ -379,7 +415,11 @@ export default function VivaRoomPage() {
                 style={{ border: "1px solid rgba(240,217,160,0.35)", color: "#f0d9a0" }}
               >
                 {drafting ? <Spinner className="h-3.5 w-3.5" /> : null}
-                {drafting ? "Drafting your letter…" : "Draft rebuttal letter"}
+                {drafting
+                  ? "Drafting your letter…"
+                  : legacyWrittenReview
+                    ? "Draft from legacy transcript"
+                    : "Draft rebuttal letter"}
               </button>
             )
           ) : null}
@@ -391,7 +431,7 @@ export default function VivaRoomPage() {
             >
               View assessment →
             </Link>
-          ) : (
+          ) : legacyWrittenReview ? null : (
             <button
               onClick={endAndAssess}
               disabled={assessing || streaming || entries.length === 0}
@@ -416,8 +456,8 @@ export default function VivaRoomPage() {
             {session.title
               ? session.title
               : isDrill
-                ? `Quick-fire drill — ${findStage(session.stage_id)?.title ?? "practice"}`
-                : `${sessionTitle(session.stage_id)} · the panel has read your report`}
+                ? `Quick-fire drill — ${sessionStage?.title ?? "practice"}`
+                : `${sessionTitle(sessionStage)} · the panel has read your report`}
           </p>
           {entries.length === 0 && streaming && !live ? (
             <div
@@ -437,15 +477,17 @@ export default function VivaRoomPage() {
           {live !== null ? (
             <PanelBubble speaker={live.speaker} text={live.text} streaming={streaming} />
           ) : null}
-          {concluded ? (
+          {concluded || legacyWrittenReview ? (
             <div
               className="anim-pop mx-auto mt-2 rounded-xl px-6 py-3.5 text-center"
               style={{ border: "1px solid rgba(240,217,160,0.3)" }}
             >
               <p className="font-display text-[16px] italic" style={{ color: "#f0d9a0" }}>
-                The panel has concluded the viva.
+                {legacyWrittenReview
+                  ? "This former live rebuttal is preserved as read-only history."
+                  : "The panel has concluded the viva."}
               </p>
-              {!existingReport ? (
+              {!existingReport && !legacyWrittenReview ? (
                 <p className="mt-1 text-xs" style={{ color: "rgba(245,242,234,0.5)" }}>
                   Request your assessment above.
                 </p>
@@ -515,7 +557,9 @@ export default function VivaRoomPage() {
               rows={2}
               disabled={!canSpeak || streaming}
               placeholder={
-                canSpeak
+                legacyWrittenReview
+                  ? "This legacy paper session is read-only."
+                  : canSpeak
                   ? "Answer the panel — type, or press the mic and speak. (Enter to send)"
                   : "This viva has ended."
               }
@@ -568,7 +612,9 @@ export default function VivaRoomPage() {
           </button>
         </div>
         <p className="mt-2 px-1 text-[11.5px]" style={{ color: "rgba(245,242,234,0.35)" }}>
-          {listening
+          {legacyWrittenReview
+            ? "Paper feedback now uses written Reviewer 1 / 2 / 3 comments."
+            : listening
             ? "Press the mic to stop, review your answer, then Send."
             : "Your answers stay in this session. Enter to send · Shift+Enter for a new line."}
         </p>

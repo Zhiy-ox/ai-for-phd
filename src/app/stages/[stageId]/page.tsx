@@ -1,17 +1,24 @@
 "use client";
 
 import Link from "next/link";
-import { useParams, useRouter } from "next/navigation";
-import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
-import { getSessionStyle, type ProgrammeTemplate, type StageTemplate } from "@/lib/template";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  getSessionStyle,
+  hasLivePanel,
+  hasWrittenPeerReview,
+  type ProgrammeTemplate,
+  type StageTemplate,
+} from "@/lib/template";
 import type { StageInstance, StageStatus } from "@/lib/db/repos/stage-instances";
 import type { DocumentSummary } from "@/lib/db/repos/documents";
 import type { SessionRow } from "@/lib/db/repos/sessions";
-import type { ReportRow } from "@/lib/db/repos/reports";
+import type { ReportSummary } from "@/lib/db/repos/reports";
 import type { ProviderId } from "@/lib/providers/types";
 import type { PanelStyle } from "@/lib/viva/types";
 import { getPersonality, PANEL_PERSONALITIES } from "@/lib/viva/personalities";
 import type { FindingRow, FindingStatus } from "@/lib/db/repos/findings";
+import type { PanelProgress, StageActivity } from "@/lib/db/repos/stage-activity";
 import {
   ACTIVITY_LABELS,
   apiGet,
@@ -25,7 +32,6 @@ import { CountdownChip } from "@/components/countdown";
 import { ProviderPicker } from "@/components/provider-picker";
 import { UploadDropzone } from "@/components/upload-dropzone";
 import {
-  AnimatedCheck,
   Burst,
   Button,
   Card,
@@ -182,26 +188,53 @@ function StageHeader({
 
 function DocumentsTab({
   stage,
+  mode,
   onActivity,
 }: {
   stage: StageTemplate;
+  mode: "submit" | "feedback";
   onActivity?: () => void;
 }) {
   const [docs, setDocs] = useState<DocumentSummary[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [reviewing, setReviewing] = useState<string | null>(null);
+  const feedbackHeadingRef = useRef<HTMLHeadingElement>(null);
   const router = useRouter();
 
   const load = useCallback(() => {
     apiGet<{ documents: DocumentSummary[] }>(`/api/documents?stageId=${stage.id}`)
       .then((r) => {
         setDocs(r.documents);
-        onActivity?.();
       })
       .catch((e) => setError(messageOf(e)));
-  }, [stage.id, onActivity]);
+  }, [stage.id]);
 
   useEffect(load, [load]);
+
+  // Move focus to the feedback heading once per entry into the Feedback
+  // step. Later document reloads (an upload in the dropzone above) must not
+  // yank focus and scroll away from where the user is working.
+  const focusedEntryRef = useRef(false);
+  useEffect(() => {
+    if (mode !== "feedback") {
+      focusedEntryRef.current = false;
+      return;
+    }
+    if (docs === null || focusedEntryRef.current) return;
+    focusedEntryRef.current = true;
+    const frame = window.requestAnimationFrame(() => {
+      const heading = feedbackHeadingRef.current;
+      if (!heading) return;
+      heading.focus({ preventScroll: true });
+      heading.scrollIntoView({
+        behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches
+          ? "auto"
+          : "smooth",
+        block: "start",
+      });
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [docs, mode]);
 
   async function review(docId: string) {
     setReviewing(docId);
@@ -212,12 +245,17 @@ function DocumentsTab({
         "POST",
         { stageId: stage.id },
       );
+      onActivity?.();
       router.push(`/reports/${reportId}`);
     } catch (err) {
       setError(messageOf(err));
       setReviewing(null);
     }
   }
+
+  const primaryDocument =
+    stage.requiredDocuments[0]?.title.toLowerCase() ?? `${stage.title.toLowerCase()} document`;
+  const peerReview = hasWrittenPeerReview(stage);
 
   return (
     <div className="space-y-5">
@@ -235,52 +273,123 @@ function DocumentsTab({
       <UploadDropzone
         stageId={stage.id}
         defaultKind={STAGE_PRIMARY_KIND[stage.id] ?? "other"}
-        onUploaded={load}
+        onUploaded={() => {
+          load();
+          onActivity?.();
+        }}
       />
 
       {error ? <ErrorBanner message={error} /> : null}
 
-      {docs === null ? (
-        <PageLoading label="Loading documents…" />
-      ) : docs.length === 0 ? (
-        <EmptyState
-          title="No documents yet"
-          hint="Upload your transfer report draft to get rubric-based feedback and to arm the mock viva panel."
-        />
-      ) : (
-        <ul className="space-y-2">
-          {docs.map((doc, i) => (
-            <li key={doc.id} className="anim-rise-sm" style={{ "--d": `${i * 60}ms` } as CSSProperties}>
-              <Card className="flex flex-wrap items-center gap-3 p-4 transition-shadow hover:shadow-md">
-                <Link
-                  href={`/documents/${doc.id}`}
-                  className="font-medium text-oxford hover:underline"
-                >
-                  {doc.filename}
-                </Link>
-                <KindBadge kind={doc.kind} />
-                {doc.has_text ? (
-                  <Chip tone="green">text ✓</Chip>
-                ) : (
-                  <Chip tone="amber" title={doc.extract_error ?? undefined}>
-                    extraction failed
-                  </Chip>
-                )}
-                <span className="ml-auto flex items-center gap-2">
-                  <Button
-                    variant="secondary"
-                    disabled={!doc.has_text || reviewing !== null}
-                    onClick={() => review(doc.id)}
+      <section
+        aria-labelledby={mode === "feedback" ? "feedback-actions-title" : undefined}
+        className={
+          mode === "feedback"
+            ? "scroll-mt-6 rounded-2xl border border-oxford/30 bg-oxford-faint p-5"
+            : undefined
+        }
+      >
+        {mode === "feedback" ? (
+          <div className="mb-4">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-oxford">
+              {peerReview ? "Written peer review" : "Feedback workspace"}
+            </p>
+            <h2
+              id="feedback-actions-title"
+              ref={feedbackHeadingRef}
+              tabIndex={-1}
+              className="mt-1 scroll-mt-24 font-display text-2xl text-ink focus:outline-none focus-visible:ring-2 focus-visible:ring-oxford focus-visible:ring-offset-4 focus-visible:ring-offset-oxford-faint"
+            >
+              {peerReview
+                ? "Generate comments from Reviewer 1, Reviewer 2, and Reviewer 3"
+                : "Choose a document for rubric-scored feedback"}
+            </h2>
+            <p className="mt-1.5 text-sm leading-relaxed text-ink-soft">
+              {peerReview
+                ? "This is a written referee packet, not a live interview. Each reviewer returns numbered comments and concrete revision suggestions; Reviewer 2 is always the most hostile, while remaining professional."
+                : "Use “Get feedback” on any document with extracted text. Your review will open as a scored report with concrete actions."}
+            </p>
+            {peerReview ? (
+              <div className="mt-4 grid gap-2 sm:grid-cols-3" aria-label="Fixed reviewer panel">
+                {[
+                  ["Reviewer 1", "Constructive methods & reproducibility"],
+                  ["Reviewer 2", "Most hostile · novelty & soundness"],
+                  ["Reviewer 3", "Significance, framing & clarity"],
+                ].map(([name, remit], index) => (
+                  <div
+                    key={name}
+                    className={`rounded-xl border px-3 py-3 ${
+                      index === 1
+                        ? "border-brass/50 bg-gold-bg"
+                        : "border-line bg-white/80"
+                    }`}
                   >
-                    {reviewing === doc.id ? <Spinner /> : null}
-                    {reviewing === doc.id ? "Panel is reading…" : "Get feedback"}
-                  </Button>
-                </span>
-              </Card>
-            </li>
-          ))}
-        </ul>
-      )}
+                    <p className="font-display text-sm text-ink">{name}</p>
+                    <p className="mt-0.5 text-[11px] leading-snug text-ink-soft">{remit}</p>
+                  </div>
+                ))}
+              </div>
+            ) : null}
+          </div>
+        ) : null}
+
+        {docs === null ? (
+          <PageLoading label="Loading documents…" />
+        ) : docs.length === 0 ? (
+          <EmptyState
+            title="No documents yet"
+            hint={
+              peerReview
+                ? `Upload your ${primaryDocument} above to generate three written reviewer reports.`
+                : `Upload your ${primaryDocument} above to get rubric-based feedback${hasLivePanel(stage) ? " and prepare the assessment panel." : "."}`
+            }
+          />
+        ) : (
+          <ul className="space-y-2">
+            {docs.map((doc, i) => (
+              <li key={doc.id} className="anim-rise-sm" style={{ "--d": `${i * 60}ms` } as CSSProperties}>
+                <Card className="flex flex-wrap items-center gap-3 p-4 transition-shadow hover:shadow-md">
+                  <Link
+                    href={`/documents/${doc.id}`}
+                    className="font-medium text-oxford hover:underline focus-visible:rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-oxford focus-visible:ring-offset-2"
+                  >
+                    {doc.filename}
+                  </Link>
+                  <KindBadge kind={doc.kind} />
+                  {doc.has_text ? (
+                    <Chip tone="green">text ✓</Chip>
+                  ) : (
+                    <Chip tone="amber" title={doc.extract_error ?? undefined}>
+                      extraction failed
+                    </Chip>
+                  )}
+                  <span className="ml-auto flex items-center gap-2">
+                    {peerReview && doc.kind !== "paper" ? (
+                      <Chip tone="muted">supporting file · manuscript required</Chip>
+                    ) : (
+                      <Button
+                        variant="secondary"
+                        className="min-h-11 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-oxford focus-visible:ring-offset-2"
+                        disabled={!doc.has_text || reviewing !== null}
+                        onClick={() => review(doc.id)}
+                      >
+                        {reviewing === doc.id ? <Spinner /> : null}
+                        {reviewing === doc.id
+                          ? peerReview
+                            ? "Three reviewers are reading…"
+                            : "Reviewing your document…"
+                          : peerReview
+                            ? "Generate reviewer comments"
+                            : "Get feedback"}
+                      </Button>
+                    )}
+                  </span>
+                </Card>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
     </div>
   );
 }
@@ -300,7 +409,13 @@ const TARGET_PRESETS = [
   "writing & clarity",
 ];
 
-function VivaTab({ stage }: { stage: StageTemplate }) {
+function VivaTab({
+  stage,
+  onActivity,
+}: {
+  stage: StageTemplate;
+  onActivity?: () => void;
+}) {
   const [docs, setDocs] = useState<DocumentSummary[] | null>(null);
   const [primary, setPrimary] = useState<string | null>(null);
   const [supporting, setSupporting] = useState<Set<string>>(new Set());
@@ -357,6 +472,7 @@ function VivaTab({ stage }: { stage: StageTemplate }) {
         style,
         mode,
       });
+      onActivity?.();
       router.push(`/sessions/${session.id}`);
     } catch (err) {
       setError(messageOf(err));
@@ -672,8 +788,11 @@ function WeaknessLedger({ stage }: { stage: StageTemplate }) {
     <div className="mb-6">
       <SectionLabel>Weakness ledger</SectionLabel>
       <p className="mt-1 text-xs text-ink-faint">
-        Harvested from assessments and reviews. The panel re-attacks open items in
-        every session until they are resolved.
+        {hasLivePanel(stage)
+          ? "Harvested from assessments and reviews. The panel re-attacks open items in every session until they are resolved."
+          : hasWrittenPeerReview(stage)
+            ? "Harvested from written referee comments. Major and moderate points stay here until you resolve them."
+            : "Harvested from document reviews. Open items stay on your ledger until you resolve them."}
       </p>
       {error ? <p className="mt-2 text-sm text-red-700">{error}</p> : null}
       {open.length === 0 ? (
@@ -731,7 +850,7 @@ function WeaknessLedger({ stage }: { stage: StageTemplate }) {
 function ReportsTab({ stage }: { stage: StageTemplate }) {
   const [rows, setRows] = useState<
     | {
-        report: ReportRow;
+        report: ReportSummary;
         session?: SessionRow;
       }[]
     | null
@@ -740,20 +859,15 @@ function ReportsTab({ stage }: { stage: StageTemplate }) {
 
   useEffect(() => {
     Promise.all([
-      apiGet<{ reports: ReportRow[] }>("/api/reports"),
+      apiGet<{ reports: ReportSummary[] }>(
+        `/api/reports?stageId=${stage.id}&summary=1`,
+      ),
       apiGet<{ sessions: SessionRow[] }>(`/api/sessions?stageId=${stage.id}`),
-      apiGet<{ documents: DocumentSummary[] }>(`/api/documents?stageId=${stage.id}`),
     ])
-      .then(([r, s, d]) => {
+      .then(([r, s]) => {
         const sessionIds = new Map(s.sessions.map((x) => [x.id, x]));
-        const docIds = new Set(d.documents.map((x) => x.id));
         setRows(
           r.reports
-            .filter(
-              (rep) =>
-                (rep.session_id && sessionIds.has(rep.session_id)) ||
-                (rep.document_id && docIds.has(rep.document_id)),
-            )
             .map((rep) => ({
               report: rep,
               session: rep.session_id ? sessionIds.get(rep.session_id) : undefined,
@@ -766,6 +880,8 @@ function ReportsTab({ stage }: { stage: StageTemplate }) {
   if (error) return <ErrorBanner message={error} />;
   if (rows === null) return <PageLoading label="Loading reports…" />;
   if (rows.length === 0) {
+    const primaryDocument =
+      stage.requiredDocuments[0]?.title.toLowerCase() ?? `${stage.title.toLowerCase()} document`;
     return (
       <div>
         <WeaknessLedger stage={stage} />
@@ -775,9 +891,15 @@ function ReportsTab({ stage }: { stage: StageTemplate }) {
         >
           <GuideSteps
             steps={[
-              "Upload your draft in the Documents tab.",
-              "Press “Get feedback” — a rubric-scored review lands here.",
-              "Face the panel — the viva assessment and its weakness ledger follow.",
+              `Upload your ${primaryDocument} in Submit.`,
+              hasWrittenPeerReview(stage)
+                ? "Open Reviewer comments and generate three written referee reports."
+                : "Open Feedback and request a rubric-scored review.",
+              ...(hasLivePanel(stage)
+                ? ["Complete the panel exercise — its assessment and weakness ledger follow."]
+                : hasWrittenPeerReview(stage)
+                  ? ["Open the reviewer packet, prioritise the major comments, then draft your response."]
+                  : ["Open the review to work through its rubric scores and weakness ledger."]),
             ]}
           />
         </EmptyState>
@@ -794,9 +916,17 @@ function ReportsTab({ stage }: { stage: StageTemplate }) {
           <Link href={`/reports/${report.id}`} className="block">
             <Card className="flex flex-wrap items-center gap-3 p-4 transition-all hover:-translate-y-px hover:shadow-md">
               <span className="font-medium text-oxford">
-                {report.type === "viva_assessment" ? "Viva assessment" : "Document review"}
+                {report.type === "viva_assessment"
+                  ? "Viva assessment"
+                  : report.type === "rebuttal_letter"
+                    ? "Response to reviewers"
+                    : hasWrittenPeerReview(stage)
+                      ? "Reviewer comments"
+                      : "Document review"}
               </span>
-              {report.verdict ? <Chip tone="brass">{report.verdict}</Chip> : null}
+              {report.verdict ? (
+                <Chip tone="brass">{report.verdict.replace(/_/g, " ")}</Chip>
+              ) : null}
               {session ? <ProviderBadge provider={session.provider} /> : null}
               <span className="ml-auto text-xs text-ink-faint">
                 {formatDateTime(report.created_at)}
@@ -815,21 +945,69 @@ function ReportsTab({ stage }: { stage: StageTemplate }) {
 /* ------------------------------------------------------------------ */
 
 type StepId = "submit" | "feedback" | "panel" | "record";
+type StepState = PanelProgress;
 
 interface StageStep {
   id: StepId;
   title: string;
   hint: string;
-  done: boolean;
+  state: StepState;
 }
 
-// Which content view each step opens (submit and feedback share one).
 const STEP_VIEW: Record<StepId, Tab> = {
   submit: "documents",
   feedback: "documents",
   panel: "viva",
   record: "reports",
 };
+
+const STEP_IDS: readonly StepId[] = ["submit", "feedback", "panel", "record"];
+
+function stepFromSearch(search: string): StepId {
+  const query = new URLSearchParams(search);
+  const step = query.get("step");
+  if (step && STEP_IDS.includes(step as StepId)) return step as StepId;
+
+  // Keep bookmarks from the former tab strip working while new links use ?step=.
+  const tab = query.get("tab");
+  if (tab === "viva") return "panel";
+  if (tab === "reports") return "record";
+  if (tab === "feedback") return "feedback";
+  return "submit";
+}
+
+function stepsFor(stage: StageTemplate, activity: StageActivity): StageStep[] {
+  return [
+    {
+      id: "submit",
+      title: "Submit",
+      hint: stage.requiredDocuments[0]?.title ?? "Upload your document",
+      state: activity.readable > 0 ? "complete" : "not_started",
+    },
+    {
+      id: "feedback",
+      title: hasWrittenPeerReview(stage) ? "Reviewer comments" : "Feedback",
+      hint: hasWrittenPeerReview(stage) ? "Reviewer 1 / 2 / 3" : "Rubric-scored review",
+      state: activity.reviews > 0 ? "complete" : "not_started",
+    },
+    ...(hasLivePanel(stage)
+      ? [
+          {
+            id: "panel" as StepId,
+            title: "Face the panel",
+            hint: `${getSessionStyle(stage).label} or drill`,
+            state: activity.panelState,
+          },
+        ]
+      : []),
+    {
+      id: "record",
+      title: "The record",
+      hint: "Reports & weakness ledger",
+      state: activity.reports > 0 ? "complete" : "not_started",
+    },
+  ];
+}
 
 function StageStepper({
   steps,
@@ -841,57 +1019,127 @@ function StageStepper({
   onSelect: (id: StepId) => void;
 }) {
   return (
-    <div className="mb-7 flex items-start">
-      {steps.map((step, i) => {
-        const current = step.id === currentId;
-        const prevDone = i === 0 || steps[i - 1].done;
-        return (
-          <Fragment key={step.id}>
-            {i > 0 ? (
-              <div
-                className="mx-1.5 mt-[15px] h-px min-w-4 flex-1 transition-colors duration-500"
-                style={{ background: prevDone ? "#2eb87a" : "#e5e0d2" }}
+    <nav aria-label="Stage progress" className="mb-7">
+      <ol
+        className="grid items-start"
+        style={{ gridTemplateColumns: `repeat(${steps.length}, minmax(0, 1fr))` }}
+      >
+        {steps.map((step, i) => {
+          const current = step.id === currentId;
+          const complete = step.state === "complete";
+          const connectorComplete = complete;
+          return (
+            <li key={step.id} className="relative min-w-0">
+            {i < steps.length - 1 ? (
+              <span
+                aria-hidden="true"
+                className="absolute top-[21px] h-px transition-colors duration-500"
+                style={{
+                  left: "calc(50% + 24px)",
+                  right: "calc(-50% + 24px)",
+                  background: connectorComplete ? "#1f7a52" : "#d8d2c2",
+                }}
               />
             ) : null}
             <button
               type="button"
               onClick={() => onSelect(step.id)}
-              className="flex max-w-[150px] flex-col items-center gap-1.5 text-center transition-transform hover:-translate-y-0.5 active:scale-[0.97]"
+              aria-current={current ? "step" : undefined}
+              className="relative z-10 mx-auto flex min-h-11 w-full cursor-pointer flex-col items-center gap-1.5 rounded-xl px-1 py-0.5 text-center transition-transform hover:-translate-y-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-oxford focus-visible:ring-offset-2 focus-visible:ring-offset-paper active:scale-[0.97]"
             >
-              {step.done && !current ? (
-                <AnimatedCheck done size={30} />
-              ) : (
-                <span
-                  className="flex h-[30px] w-[30px] items-center justify-center rounded-full border-[1.5px] text-[13px] font-semibold transition-all duration-300"
-                  style={
-                    current
-                      ? {
-                          background: "#2953c4",
-                          borderColor: "#2953c4",
-                          color: "#fff",
-                          boxShadow: "0 0 0 4px rgba(41,83,196,0.15)",
-                        }
-                      : step.done
-                        ? { background: "#2eb87a", borderColor: "#2eb87a", color: "#fff" }
-                        : { background: "#fffdf8", borderColor: "#d8d2c2", color: "#98a1ab" }
-                  }
-                >
-                  {step.done && current ? "✓" : i + 1}
-                </span>
-              )}
+              <span
+                aria-hidden="true"
+                className="flex h-9 w-9 items-center justify-center rounded-full border-[1.5px] text-[13px] font-semibold transition-all duration-300"
+                style={
+                  current
+                    ? {
+                        background: "#2953c4",
+                        borderColor: "#2953c4",
+                        color: "#fff",
+                        boxShadow: "0 0 0 4px rgba(41,83,196,0.15)",
+                      }
+                    : complete
+                      ? { background: "#1f7a52", borderColor: "#1f7a52", color: "#fff" }
+                      : step.state === "in_progress"
+                        ? { background: "#f3ead2", borderColor: "#8b6a24", color: "#6f541c" }
+                        : { background: "#fffdf8", borderColor: "#b8b09f", color: "#5b6673" }
+                }
+              >
+                {complete ? (
+                  <svg viewBox="0 0 10 10" className="h-4 w-4">
+                    <path
+                      d="M2 5.2 4.2 7.4 8 3"
+                      stroke="currentColor"
+                      strokeWidth="1.8"
+                      fill="none"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    />
+                  </svg>
+                ) : (
+                  i + 1
+                )}
+              </span>
               <span
                 className="text-[12.5px] leading-tight transition-colors"
                 style={{ fontWeight: current ? 600 : 500, color: current ? "#16202e" : "#5b6673" }}
               >
+                <span className="sr-only">
+                  {complete
+                    ? "Completed. "
+                    : step.state === "in_progress"
+                      ? "In progress. "
+                      : "Not completed. "}
+                  {current ? "Current step. " : ""}
+                </span>
                 {step.title}
               </span>
-              <span className="hidden text-[11px] leading-snug text-ink-faint sm:block">
+              <span className="hidden text-[11px] leading-snug text-ink-soft sm:block">
                 {step.hint}
               </span>
+              {step.state === "in_progress" ? (
+                <span className="text-[10px] font-semibold text-[#6f541c]">In progress</span>
+              ) : null}
             </button>
-          </Fragment>
-        );
-      })}
+            </li>
+          );
+        })}
+      </ol>
+    </nav>
+  );
+}
+
+function StageProgressLoading() {
+  return (
+    <div
+      role="status"
+      aria-live="polite"
+      className="mb-7 flex min-h-24 items-center justify-center gap-2 rounded-xl border border-line bg-white/70 px-4 py-5 text-sm text-ink-soft"
+    >
+      <Spinner className="h-4 w-4 text-oxford" />
+      Checking stage progress…
+    </div>
+  );
+}
+
+function StageProgressError({ message, onRetry }: { message: string; onRetry: () => void }) {
+  return (
+    <div
+      role="alert"
+      className="mb-7 flex min-h-24 flex-wrap items-center gap-3 rounded-xl border border-red-200 bg-red-50 px-4 py-4 text-sm text-red-800"
+    >
+      <div className="min-w-0 flex-1">
+        <p className="font-semibold">Stage progress is unavailable</p>
+        <p className="mt-0.5 text-xs leading-relaxed text-red-700">{message}</p>
+      </div>
+      <Button
+        type="button"
+        variant="secondary"
+        className="min-h-11 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-700 focus-visible:ring-offset-2"
+        onClick={onRetry}
+      >
+        Retry
+      </Button>
     </div>
   );
 }
@@ -900,28 +1148,43 @@ function StageStepper({
 /* Page                                                                */
 /* ------------------------------------------------------------------ */
 
+type ActivityLoadState =
+  | { status: "loading"; stageId: string }
+  | { status: "ready"; stageId: string; activity: StageActivity }
+  | { status: "error"; stageId: string; message: string };
+
 export default function StagePage() {
   const params = useParams<{ stageId: string }>();
   const stageId = params.stageId;
+  const router = useRouter();
+  const searchParams = useSearchParams();
   const [data, setData] = useState<ProgrammeResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
-  // ?tab=viva|reports deep-links from the dashboard map onto stepper steps.
-  // Safe to read location in the initializer: nothing step-dependent renders
-  // until data has loaded.
-  const [stepId, setStepId] = useState<StepId>(() => {
-    if (typeof window === "undefined") return "submit";
-    const t = new URLSearchParams(window.location.search).get("tab");
-    return t === "viva" ? "panel" : t === "reports" ? "record" : "submit";
+  const stepId = stepFromSearch(searchParams.toString());
+  const [activityState, setActivityState] = useState<ActivityLoadState>({
+    status: "loading",
+    stageId,
   });
-  // Step completion states, refreshed whenever a tab reports activity.
-  const [activity, setActivity] = useState<{
-    readable: number;
-    reviews: number;
-    sessions: number;
-    reports: number;
-  } | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
   const bumpActivity = useCallback(() => setRefreshKey((k) => k + 1), []);
+  const retryActivity = useCallback(() => {
+    setActivityState({ status: "loading", stageId });
+    setRefreshKey((k) => k + 1);
+  }, [stageId]);
+
+  const selectStep = useCallback(
+    (next: StepId) => {
+      const query = new URLSearchParams(window.location.search);
+      query.set("step", next);
+      query.delete("tab");
+      const suffix = query.toString();
+      router.push(
+        `${window.location.pathname}${suffix ? `?${suffix}` : ""}${window.location.hash}`,
+        { scroll: false },
+      );
+    },
+    [router],
+  );
 
   useEffect(() => {
     apiGet<ProgrammeResponse>("/api/programme")
@@ -931,29 +1194,15 @@ export default function StagePage() {
 
   useEffect(() => {
     let cancelled = false;
-    Promise.all([
-      apiGet<{ documents: DocumentSummary[] }>(`/api/documents?stageId=${stageId}`),
-      apiGet<{ sessions: SessionRow[] }>(`/api/sessions?stageId=${stageId}`),
-      apiGet<{ reports: ReportRow[] }>("/api/reports"),
-    ])
-      .then(([d, s, r]) => {
+    apiGet<{ activity: StageActivity }>(`/api/stages/${stageId}/activity`)
+      .then(({ activity }) => {
         if (cancelled) return;
-        const sessionIds = new Set(s.sessions.map((x) => x.id));
-        const docIds = new Set(d.documents.map((x) => x.id));
-        const stageReports = r.reports.filter(
-          (rep) =>
-            (rep.session_id && sessionIds.has(rep.session_id)) ||
-            (rep.document_id && docIds.has(rep.document_id)),
-        );
-        setActivity({
-          readable: d.documents.filter((x) => x.has_text).length,
-          reviews: stageReports.filter((rep) => rep.type === "doc_review").length,
-          sessions: s.sessions.length,
-          reports: stageReports.length,
-        });
+        setActivityState({ status: "ready", stageId, activity });
       })
-      .catch(() => {
-        if (!cancelled) setActivity(null);
+      .catch((e) => {
+        if (!cancelled) {
+          setActivityState({ status: "error", stageId, message: messageOf(e) });
+        }
       });
     return () => {
       cancelled = true;
@@ -975,41 +1224,20 @@ export default function StagePage() {
     return <ErrorBanner tone="red" message={`Unknown stage: ${stageId}`} />;
   }
 
-  // The guided path through a gate. Review-only stages (thesis) skip the
-  // panel step; "The record" collects reports and the weakness ledger.
-  const steps: StageStep[] = [
-    {
-      id: "submit",
-      title: "Submit",
-      hint: stage.requiredDocuments[0]?.title ?? "Upload your document",
-      done: (activity?.readable ?? 0) > 0,
-    },
-    {
-      id: "feedback",
-      title: "Feedback",
-      hint: "Rubric-scored review",
-      done: (activity?.reviews ?? 0) > 0,
-    },
-    ...(stage.assessment
-      ? [
-          {
-            id: "panel" as StepId,
-            title: "Face the panel",
-            hint: `${getSessionStyle(stage).label} or drill`,
-            done: (activity?.sessions ?? 0) > 0,
-          },
-        ]
-      : []),
-    {
-      id: "record",
-      title: "The record",
-      hint: "Reports & weakness ledger",
-      done: (activity?.reports ?? 0) > 0,
-    },
-  ];
-  // A ?tab=viva deep link on a review-only stage falls back to step one.
-  const currentStep = steps.some((s) => s.id === stepId) ? stepId : "submit";
+  const availableSteps: StepId[] = hasLivePanel(stage)
+    ? ["submit", "feedback", "panel", "record"]
+    : ["submit", "feedback", "record"];
+  const currentStep = availableSteps.includes(stepId)
+    ? stepId
+    : hasWrittenPeerReview(stage) && stepId === "panel"
+      ? "feedback"
+      : "submit";
   const view = STEP_VIEW[currentStep];
+  const activityForStage =
+    activityState.stageId === stageId && activityState.status === "ready"
+      ? activityState.activity
+      : null;
+  const steps = activityForStage ? stepsFor(stage, activityForStage) : null;
 
   return (
     <div className="mx-auto max-w-[880px] px-5 py-11 md:px-9">
@@ -1045,12 +1273,24 @@ export default function StagePage() {
       {stage.implemented ? (
         <>
           <div className="anim-rise" style={{ "--d": "140ms" } as CSSProperties}>
-            <StageStepper steps={steps} currentId={currentStep} onSelect={setStepId} />
+            {steps ? (
+              <StageStepper steps={steps} currentId={currentStep} onSelect={selectStep} />
+            ) : activityState.stageId === stageId && activityState.status === "error" ? (
+              <StageProgressError message={activityState.message} onRetry={retryActivity} />
+            ) : (
+              <StageProgressLoading />
+            )}
           </div>
-          {/* Keyed on the view so every switch re-runs the entrance animation. */}
-          <div key={view} className="anim-rise-sm">
-            {view === "documents" ? <DocumentsTab stage={stage} onActivity={bumpActivity} /> : null}
-            {view === "viva" ? <VivaTab stage={stage} /> : null}
+          {/* Every URL-backed destination gets a fresh entrance and focus pass. */}
+          <div key={currentStep} className="anim-rise-sm">
+            {view === "documents" ? (
+              <DocumentsTab
+                stage={stage}
+                mode={currentStep === "feedback" ? "feedback" : "submit"}
+                onActivity={bumpActivity}
+              />
+            ) : null}
+            {view === "viva" ? <VivaTab stage={stage} onActivity={bumpActivity} /> : null}
             {view === "reports" ? <ReportsTab stage={stage} /> : null}
           </div>
         </>

@@ -2,6 +2,7 @@ import { z } from "zod";
 import { listSessions, type SessionType } from "@/lib/db/repos/sessions";
 import { getSettings } from "@/lib/db/repos/settings";
 import { startVivaSession } from "@/lib/viva/engine";
+import { getActiveProgrammeId } from "@/lib/programme";
 
 export const dynamic = "force-dynamic";
 
@@ -35,7 +36,9 @@ export async function GET(request: Request): Promise<Response> {
       type = parsed.data;
     }
     const stageId = url.searchParams.get("stageId") ?? undefined;
-    return Response.json({ sessions: listSessions({ type, stageId }) });
+    return Response.json({
+      sessions: listSessions({ programmeId: getActiveProgrammeId(), type, stageId }),
+    });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     return Response.json({ error: message }, { status: 500 });

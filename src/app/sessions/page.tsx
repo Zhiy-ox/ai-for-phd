@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import type { SessionRow } from "@/lib/db/repos/sessions";
-import { findStage, getSessionStyle } from "@/lib/template";
+import { findStage, getSessionStyle, hasWrittenPeerReview } from "@/lib/template";
 import { apiGet, apiSend, formatDateTime, messageOf } from "@/components/api";
 import { ProviderBadge, SessionStatusChip } from "@/components/status-chip";
 import { Card, EmptyState, ErrorBanner, GuideSteps, PageLoading, SectionLabel } from "@/components/ui";
@@ -11,7 +11,7 @@ import type { CSSProperties } from "react";
 
 function describeSession(s: SessionRow): string {
   if (s.type !== "viva") return "Document review";
-  const stage = findStage(s.stage_id);
+  const stage = findStage(s.stage_id, s.programme_id);
   if (!stage) return `Session — ${s.stage_id}`;
   let isDrill = false;
   try {
@@ -19,6 +19,7 @@ function describeSession(s: SessionRow): string {
   } catch {
     // Old sessions predate config parsing edge cases — treat as full sessions.
   }
+  if (hasWrittenPeerReview(stage)) return `Legacy rebuttal session — ${stage.title}`;
   return `${isDrill ? "Quick-fire drill" : getSessionStyle(stage).label} — ${stage.title}`;
 }
 

@@ -2,9 +2,10 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import type { ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { AuthDot, useProviderStatus } from "@/components/provider-picker";
-import { PROVIDER_LABELS } from "@/components/api";
+import { apiGet, PROVIDER_LABELS } from "@/components/api";
+import { DEFAULT_PROGRAMME_ID, listProgrammes } from "@/lib/template";
 
 interface NavItem {
   href: string;
@@ -23,9 +24,26 @@ const NAV: NavItem[] = [
   { href: "/settings", label: "Settings", isActive: (p) => p.startsWith("/settings") },
 ];
 
-function Brand({ dark }: { dark: boolean }) {
+// Names come from the template registry so a new or renamed programme
+// shows up in the masthead without touching this file.
+function programmeNameFor(id: string): string {
+  const programmes = listProgrammes();
   return (
-    <Link href="/" className="flex items-baseline gap-2.5">
+    programmes.find((p) => p.id === id)?.name ??
+    programmes.find((p) => p.id === DEFAULT_PROGRAMME_ID)?.name ??
+    "Doctoral programme"
+  );
+}
+
+function Brand({ dark, programmeName }: { dark: boolean; programmeName: string }) {
+  return (
+    <Link
+      href="/"
+      aria-label={`AI for PhD — ${programmeName}`}
+      className={`flex min-h-11 shrink-0 items-center gap-2.5 rounded-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 ${
+        dark ? "focus-visible:outline-[#f5f2ea]" : "focus-visible:outline-oxford"
+      }`}
+    >
       <span
         className="font-display text-[22px] font-medium italic"
         style={{ color: dark ? "#f5f2ea" : "var(--color-ink)" }}
@@ -33,10 +51,11 @@ function Brand({ dark }: { dark: boolean }) {
         AI for PhD
       </span>
       <span
-        className="text-[10px] uppercase tracking-[0.22em]"
-        style={{ color: dark ? "rgba(245,242,234,0.5)" : "var(--color-ink-faint)" }}
+        className="hidden max-w-40 truncate text-[10px] uppercase tracking-[0.18em] sm:inline"
+        style={{ color: dark ? "rgba(245,242,234,0.72)" : "var(--color-ink-soft)" }}
+        title={programmeName}
       >
-        Oxford DPhil
+        {programmeName}
       </span>
     </Link>
   );
@@ -67,8 +86,31 @@ function ProviderStatus({ dark }: { dark: boolean }) {
 
 export function AppShell({ children }: { children: ReactNode }) {
   const pathname = usePathname() ?? "/";
+  const [programmeName, setProgrammeName] = useState("Doctoral programme");
   // The viva room paints its own full-bleed dark background.
   const dark = /^\/sessions\/[^/]+$/.test(pathname);
+
+  // Load once; the welcome wizard and Settings dispatch
+  // "aiphd:programme-changed" whenever they switch programmes.
+  useEffect(() => {
+    let active = true;
+    const refreshProgramme = () => {
+      void apiGet<{ programme_id: string }>("/api/settings")
+        .then((settings) => {
+          if (active) setProgrammeName(programmeNameFor(settings.programme_id || DEFAULT_PROGRAMME_ID));
+        })
+        .catch(() => {
+          // Branding should never block navigation when settings are unavailable.
+        });
+    };
+
+    refreshProgramme();
+    window.addEventListener("aiphd:programme-changed", refreshProgramme);
+    return () => {
+      active = false;
+      window.removeEventListener("aiphd:programme-changed", refreshProgramme);
+    };
+  }, []);
 
   return (
     <div className="min-h-screen" style={dark ? { background: "#0a1626" } : undefined}>
@@ -81,8 +123,11 @@ export function AppShell({ children }: { children: ReactNode }) {
         }
       >
         <div className="mx-auto flex h-16 max-w-[1140px] items-center gap-5 px-5 md:px-9">
-          <Brand dark={dark} />
-          <nav className="ml-1 flex items-center gap-1 overflow-x-auto md:ml-3">
+          <Brand dark={dark} programmeName={programmeName} />
+          <nav
+            aria-label="Primary"
+            className="ml-1 flex items-center gap-1 overflow-x-auto md:ml-3"
+          >
             {NAV.map((item) => {
               const active = item.isActive(pathname);
               const cls = dark
@@ -96,7 +141,10 @@ export function AppShell({ children }: { children: ReactNode }) {
                 <Link
                   key={item.href}
                   href={item.href}
-                  className={`whitespace-nowrap rounded-full px-3.5 py-1.5 text-[13px] font-medium transition-colors ${cls}`}
+                  aria-current={active ? "page" : undefined}
+                  className={`flex min-h-11 items-center whitespace-nowrap rounded-full px-3.5 text-[13px] font-medium transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 ${
+                    dark ? "focus-visible:outline-[#f5f2ea]" : "focus-visible:outline-oxford"
+                  } ${cls}`}
                 >
                   {item.label}
                 </Link>

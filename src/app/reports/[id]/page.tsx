@@ -1,14 +1,21 @@
 "use client";
 
 import Link from "next/link";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import type { DocumentRow, DocumentSummary } from "@/lib/db/repos/documents";
 import type { ReportRow } from "@/lib/db/repos/reports";
 import type { ProgrammeTemplate } from "@/lib/template";
 import type { VivaAssessment } from "@/lib/viva/types";
-import type { DocReviewResult, DocReviewSection } from "@/lib/review/types";
+import {
+  isPeerReviewResult,
+  type DocReviewResult,
+  type DocReviewSection,
+  type PeerReviewerId,
+  type PeerReviewResult,
+} from "@/lib/review/types";
 import { findPreviousDocReview, parseDocReviewResult } from "@/lib/review/score-deltas";
+import { responseLetterMeta } from "@/lib/rebuttal/meta";
 import { apiGet, apiSend, formatDate, formatDateTime, messageOf } from "@/components/api";
 import { Markdown } from "@/components/markdown";
 import { Burst, Button, Card, Chip, ErrorBanner, PageLoading, SectionLabel, Spinner } from "@/components/ui";
@@ -26,9 +33,10 @@ function parseRubric<T>(report: ReportRow): T | null {
 function useCriterionTitles(programme: ProgrammeTemplate | null): Map<string, string> {
   return useMemo(() => {
     const map = new Map<string, string>();
-    programme?.stages.forEach((s) =>
-      s.assessment?.rubric.forEach((c) => map.set(c.id, c.title)),
-    );
+    programme?.stages.forEach((s) => {
+      s.reviewRubric?.forEach((c) => map.set(c.id, c.title));
+      s.assessment?.rubric.forEach((c) => map.set(c.id, c.title));
+    });
     return map;
   }, [programme]);
 }
@@ -330,6 +338,201 @@ function DocReviewView({
   );
 }
 
+const PEER_REVIEWER_META: Record<
+  PeerReviewerId,
+  { label: string; remit: string; accent: string }
+> = {
+  reviewer_1: {
+    label: "Reviewer 1",
+    remit: "Methods, reproducibility, and presentation",
+    accent: "border-oxford/30 bg-card",
+  },
+  reviewer_2: {
+    label: "Reviewer 2",
+    remit: "Most hostile · novelty and technical soundness, never abusive",
+    accent: "border-brass/60 bg-gold-bg",
+  },
+  reviewer_3: {
+    label: "Reviewer 3",
+    remit: "Significance, literature, framing, and clarity",
+    accent: "border-line bg-card",
+  },
+};
+
+const PEER_REVIEWER_ORDER: PeerReviewerId[] = ["reviewer_1", "reviewer_2", "reviewer_3"];
+
+function PeerReviewView({
+  review,
+  report,
+  programme,
+}: {
+  review: PeerReviewResult;
+  report: ReportRow;
+  programme: ProgrammeTemplate | null;
+}) {
+  const [drafting, setDrafting] = useState(false);
+  const [existingResponseId, setExistingResponseId] = useState<string | null | undefined>(() =>
+    report.document_id ? undefined : null,
+  );
+  const [error, setError] = useState<string | null>(null);
+  const router = useRouter();
+
+  useEffect(() => {
+    if (!report.document_id) {
+      return;
+    }
+    let cancelled = false;
+    void apiGet<{ reports: ReportRow[] }>(
+      `/api/reports?documentId=${encodeURIComponent(report.document_id)}&type=rebuttal_letter`,
+    )
+      .then(({ reports }) => {
+        if (cancelled) return;
+        // Failed drafts stay readable from their own page but don't count
+        // here, so the button offers a fresh attempt instead.
+        const response = reports.find((candidate) => {
+          const meta = responseLetterMeta(candidate.rubric_json);
+          return meta.complete && meta.sourceReviewId === report.id;
+        });
+        setExistingResponseId(response?.id ?? null);
+      })
+      .catch(() => {
+        if (!cancelled) setExistingResponseId(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [report.document_id, report.id]);
+
+  async function draftResponse() {
+    setDrafting(true);
+    setError(null);
+    try {
+      const { reportId } = await apiSend<{ reportId: string }>(
+        `/api/reports/${report.id}/rebuttal-letter`,
+        "POST",
+      );
+      router.push(`/reports/${reportId}`);
+    } catch (err) {
+      setError(messageOf(err));
+      setDrafting(false);
+    }
+  }
+
+  return (
+    <div className="space-y-6">
+      <VerdictBanner verdict={review.recommendation} programme={programme} />
+
+      <Card className="anim-rise p-5">
+        <div className="flex flex-col items-stretch gap-3 sm:flex-row sm:items-start">
+          <div className="min-w-0 flex-1">
+            <h2 className="font-display text-xl text-ink">Editorial summary</h2>
+            <p className="mt-2 text-sm leading-relaxed text-ink-soft">{review.summary}</p>
+          </div>
+          {existingResponseId ? (
+            <Link
+              href={`/reports/${existingResponseId}`}
+              className="no-print inline-flex min-h-11 w-full items-center justify-center rounded-xl bg-oxford px-4 py-2.5 text-sm font-semibold text-white shadow-[0_10px_24px_-12px_rgba(41,83,196,0.7)] transition-all hover:-translate-y-px hover:bg-oxford-mid sm:w-auto"
+            >
+              View response letter →
+            </Link>
+          ) : (
+            <Button
+              onClick={draftResponse}
+              disabled={drafting || existingResponseId === undefined}
+              className="no-print min-h-11 w-full sm:w-auto"
+            >
+              {drafting ? <Spinner /> : null}
+              {drafting
+                ? "Drafting response…"
+                : existingResponseId === undefined
+                  ? "Checking for response…"
+                  : "Draft response letter"}
+            </Button>
+          )}
+        </div>
+        <p className="mt-3 text-xs leading-relaxed text-ink-faint">
+          These are asynchronous written comments, like a journal decision packet—not a live
+          interview. Drafting creates an editable point-by-point response.
+        </p>
+      </Card>
+
+      {error ? <ErrorBanner message={error} /> : null}
+
+      <div className="space-y-5" aria-label="Written reviewer reports">
+        {PEER_REVIEWER_ORDER.map((reviewer, reviewerIndex) => {
+          const meta = PEER_REVIEWER_META[reviewer];
+          const comments = review.sections.filter((section) => section.reviewer === reviewer);
+          const headingId = `${report.id}-${reviewer}`;
+          return (
+            <section
+              key={reviewer}
+              aria-labelledby={headingId}
+              className={`anim-rise overflow-hidden rounded-2xl border ${meta.accent}`}
+              style={{ "--d": `${100 + reviewerIndex * 90}ms` } as CSSProperties}
+            >
+              <header className="border-b border-line/70 px-5 py-4">
+                <div className="flex flex-wrap items-center gap-2">
+                  <h2 id={headingId} className="font-display text-2xl text-ink">
+                    {meta.label}
+                  </h2>
+                  {reviewer === "reviewer_2" ? <Chip tone="brass">Most hostile</Chip> : null}
+                  <span className="ml-auto text-xs tabular-nums text-ink-faint">
+                    {comments.length} comments
+                  </span>
+                </div>
+                <p className="mt-0.5 text-xs font-medium text-ink-soft">{meta.remit}</p>
+                <p className="mt-2 text-sm leading-relaxed text-ink-soft">
+                  {review.reviewer_summaries[reviewer]}
+                </p>
+              </header>
+              <ol className="divide-y divide-line/70">
+                {comments.map((comment, index) => (
+                  <li key={`${reviewer}-${index}`} className="px-5 py-5">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="font-display text-sm text-ink">
+                        {reviewer.slice(-1)}.{index + 1}
+                      </span>
+                      <Chip
+                        tone={
+                          comment.severity === "major"
+                            ? "red"
+                            : comment.severity === "moderate"
+                              ? "amber"
+                              : "neutral"
+                        }
+                      >
+                        {comment.severity}
+                      </Chip>
+                      <span className="text-xs text-ink-faint">{comment.section_hint}</span>
+                    </div>
+                    <p className="mt-2 text-sm leading-relaxed text-ink">{comment.comment}</p>
+                    <blockquote className="mt-2 border-l-2 border-oxford/40 pl-3 font-display text-sm italic text-ink-soft">
+                      “{comment.anchor_quote}”
+                    </blockquote>
+                    <div className="mt-3 rounded-xl border border-oxford/15 bg-oxford-faint px-3.5 py-3 text-sm leading-relaxed text-oxford-deep">
+                      <span className="font-semibold">Suggested revision:</span>{" "}
+                      {comment.suggestion}
+                    </div>
+                  </li>
+                ))}
+              </ol>
+            </section>
+          );
+        })}
+      </div>
+
+      <Card className="anim-rise p-5" style={{ "--d": "390ms" } as CSSProperties}>
+        <h2 className="font-display text-xl text-ink">Revision priorities</h2>
+        <ol className="mt-3 list-decimal space-y-2 pl-5 text-sm leading-relaxed text-ink">
+          {review.top_actions.map((action, index) => (
+            <li key={index}>{action}</li>
+          ))}
+        </ol>
+      </Card>
+    </div>
+  );
+}
+
 /* ------------------------------------------------------------------ */
 /* Page                                                                */
 /* ------------------------------------------------------------------ */
@@ -416,6 +619,8 @@ export default function ReportPage() {
 
   useEffect(() => {
     if (!report || report.type !== "doc_review" || !report.document_id) return;
+    const parsed = parseDocReviewResult(report);
+    if (!parsed || isPeerReviewResult(parsed)) return;
     let cancelled = false;
     void loadReviewComparison(report)
       .then((comparison) => {
@@ -435,15 +640,26 @@ export default function ReportPage() {
   const isViva = report.type === "viva_assessment";
   const assessment = isViva ? parseRubric<VivaAssessment>(report) : null;
   const review = !isViva && report.type === "doc_review" ? parseDocReviewResult(report) : null;
+  const peerReview = review && isPeerReviewResult(review) ? review : null;
+  const documentReview = review && !isPeerReviewResult(review) ? review : null;
   const comparison = reviewComparison?.reportId === report.id ? reviewComparison : null;
+  const responseSourceId =
+    report.type === "rebuttal_letter" ? responseLetterMeta(report.rubric_json).sourceReviewId : null;
+  const backHref = responseSourceId
+    ? `/reports/${responseSourceId}`
+    : report.session_id
+      ? `/sessions/${report.session_id}`
+      : report.document_id
+        ? `/documents/${report.document_id}`
+        : "/";
 
   return (
     <div className="mx-auto max-w-[880px] px-5 py-11 md:px-9">
       <Link
-        href={report.session_id ? `/sessions/${report.session_id}` : report.document_id ? `/documents/${report.document_id}` : "/"}
+        href={backHref}
         className="no-print text-sm text-ink-faint hover:text-oxford"
       >
-        ← Back
+        ← {responseSourceId ? "Reviewer comments" : "Back"}
       </Link>
       <header className="anim-rise mb-6 mt-3">
         <div className="flex flex-wrap items-center gap-3">
@@ -452,11 +668,13 @@ export default function ReportPage() {
               ? "Viva assessment report"
               : report.type === "rebuttal_letter"
                 ? "Response to reviewers"
-                : "Document review"}
+                : peerReview
+                  ? "Written reviewer comments"
+                  : "Document review"}
           </h1>
           <button
             onClick={() => window.print()}
-            className="no-print ml-auto flex items-center gap-1.5 text-xs text-ink-faint transition-colors hover:text-oxford"
+            className="no-print ml-auto flex min-h-11 items-center gap-1.5 px-1 text-xs text-ink-faint transition-colors hover:text-oxford"
             title="Print-optimized — hand it to your supervisor"
           >
             <svg viewBox="0 0 16 16" fill="none" className="h-3.5 w-3.5" aria-hidden="true">
@@ -472,8 +690,10 @@ export default function ReportPage() {
         <RebuttalLetterView report={report} />
       ) : isViva && assessment ? (
         <VivaAssessmentView report={report} assessment={assessment} programme={programme} />
-      ) : !isViva && review ? (
-        <DocReviewView review={review} programme={programme} comparison={comparison} />
+      ) : peerReview ? (
+        <PeerReviewView key={report.id} review={peerReview} report={report} programme={programme} />
+      ) : documentReview ? (
+        <DocReviewView review={documentReview} programme={programme} comparison={comparison} />
       ) : (
         <Card className="p-6">
           <Markdown>{report.content_md}</Markdown>

@@ -79,6 +79,7 @@ export const usPhd: ProgrammeTemplate = {
       activities: ["doc_feedback", "mock_viva", "viva_prep"],
       implemented: true,
       assessment: {
+        interaction: "interview",
         panel: [
           {
             id: "chair",
@@ -166,6 +167,7 @@ export const usPhd: ProgrammeTemplate = {
       activities: ["doc_feedback", "mock_viva", "writing_support"],
       implemented: true,
       assessment: {
+        interaction: "interview",
         panel: [
           {
             id: "chair",
@@ -248,32 +250,40 @@ export const usPhd: ProgrammeTemplate = {
       title: "Papers & Rebuttals",
       ordinal: 3,
       description:
-        "Ongoing throughout: writing papers, surviving peer review, and drafting rebuttal letters. The AI plays Reviewer 2 so the real one hurts less.",
+        "Ongoing throughout: receive realistic written reports from three referees, revise the manuscript, and draft a point-by-point response. Reviewer 2 is deliberately the toughest.",
       typicalTiming: { from: 3, to: 10, label: "Recurring" },
       gate: { type: "recurring" },
       requiredDocuments: [
         { id: "manuscript", title: "Manuscript draft", description: "A paper draft for review-style feedback." },
-        { id: "reviews", title: "Referee reports", description: "Reviewer comments to rebut." },
       ],
-      activities: ["doc_feedback", "rebuttal_roleplay", "writing_support"],
+      activities: ["doc_feedback", "peer_review", "writing_support"],
       implemented: true,
       assessment: {
+        interaction: "written_peer_review",
         panel: [
+          {
+            id: "reviewer1",
+            name: "Reviewer 1",
+            role: "Anonymous referee",
+            style:
+              "Rigorous and constructive. Concentrates on methods, reproducibility, controls, and presentation, acknowledging strengths while asking for proportionate revisions.",
+            focus: ["soundness", "reproducibility", "clarity"],
+          },
           {
             id: "reviewer2",
             name: "Reviewer 2",
-            role: "Anonymous referee",
+            role: "Anonymous referee · most critical",
             style:
-              "Sceptical, technically exacting, and allergic to overclaiming. Attacks the weakest link first: missing controls, unfair baselines, error bars, reproducibility, and any gap between what the abstract promises and what the data show.",
-            focus: ["soundness", "novelty", "rebuttal"],
+              "Always the most hostile and sceptical reviewer, while remaining professional. Attacks novelty, technical soundness, missing controls, statistics, overclaiming, and the weakest link between evidence and claims.",
+            focus: ["novelty", "soundness", "reproducibility"],
           },
           {
-            id: "editor",
-            name: "Dr Marchetti",
-            role: "Associate editor",
+            id: "reviewer3",
+            name: "Reviewer 3",
+            role: "Anonymous referee",
             style:
-              "Balanced and outcome-oriented. Weighs significance for the readership, pushes on clarity and framing, and presses the author to say precisely what revision they would make.",
-            focus: ["significance", "clarity", "rebuttal"],
+              "A constructive field-level reader. Concentrates on significance, literature positioning, readership, framing, figures, and clarity without duplicating the technical reviewers.",
+            focus: ["significance", "clarity", "novelty"],
           },
         ],
         rubric: [
@@ -282,26 +292,19 @@ export const usPhd: ProgrammeTemplate = {
           { id: "significance", title: "Significance", description: "Would this result matter to the field?", weight: 1 },
           { id: "clarity", title: "Clarity & presentation", description: "Are the argument and figures clear enough for a busy reader to trust?", weight: 0.5 },
           {
-            id: "rebuttal",
-            title: "Quality of the author's defence",
+            id: "reproducibility",
+            title: "Reproducibility",
             description:
-              "Did the author address criticisms head-on with evidence and commit to concrete revisions?",
+              "Could another researcher reproduce the work from the reported methods, controls, analysis, and uncertainty information?",
             weight: 1,
           },
         ],
         verdicts: [
-          { id: "minor_revision", label: "Minor revision", description: "The rebuttal holds up; small changes only." },
+          { id: "accept", label: "Accept", description: "Suitable for publication without substantive revision." },
+          { id: "minor_revision", label: "Minor revision", description: "Small, clearly-scoped changes only." },
           { id: "major_revision", label: "Major revision", description: "Significant additional work before acceptance." },
-          { id: "reject", label: "Reject", description: "The defence did not overcome the objections." },
+          { id: "reject", label: "Reject", description: "The manuscript is not viable in its current form." },
         ],
-        session: {
-          label: "Rebuttal sparring",
-          reportTitle: "Referee Panel Assessment",
-          brief:
-            "You are role-playing the referee panel of a selective peer-reviewed journal in a live rebuttal rehearsal. The candidate (the user) is the manuscript's first author, practising their defence before writing the real response letter. The first document is the manuscript under review; any further documents are the actual referee reports — ground your objections in them where provided.",
-          opening:
-            "asking the author to state, in a few sentences, the paper's central claim and why it merits publication in this journal",
-        },
       },
     },
     {
@@ -343,6 +346,7 @@ export const usPhd: ProgrammeTemplate = {
       activities: ["mock_viva", "viva_prep"],
       implemented: true,
       assessment: {
+        interaction: "interview",
         panel: [
           {
             id: "chair",

@@ -6,6 +6,7 @@ import { usPhd } from "@/templates/us-phd";
 export const ActivityIdSchema = z.enum([
   "doc_feedback",
   "mock_viva",
+  "peer_review",
   "rebuttal_roleplay",
   "writing_support",
   "viva_prep",
@@ -37,9 +38,8 @@ export const StageGateSchema = z.object({
   formRef: z.string().optional(),
 });
 
-// Optional per-stage styling of the interview exercise. Defaults describe a
-// formal Oxford viva; the papers stage overrides them to frame a peer-review
-// rebuttal rehearsal instead.
+// Optional per-stage styling of a live interview exercise. Written peer-review
+// stages do not use this session copy.
 export const SessionStyleSchema = z.object({
   label: z.string().optional(),
   brief: z.string().optional(),
@@ -68,6 +68,7 @@ export const StageTemplateSchema = z.object({
   reviewRubric: z.array(RubricCriterionSchema).optional(),
   assessment: z
     .object({
+      interaction: z.enum(["interview", "written_peer_review"]).default("interview"),
       panel: z.array(PersonaTemplateSchema),
       rubric: z.array(RubricCriterionSchema),
       verdicts: z.array(VerdictTemplateSchema),
@@ -130,6 +131,14 @@ export function getStage(programmeId: string, stageId: string): StageTemplate {
   return stage;
 }
 
+export function hasLivePanel(stage: StageTemplate): boolean {
+  return Boolean(stage.assessment && stage.assessment.interaction === "interview");
+}
+
+export function hasWrittenPeerReview(stage: StageTemplate): boolean {
+  return Boolean(stage.assessment?.interaction === "written_peer_review");
+}
+
 // Display fallback for client code that has a stage id but no programme
 // context (e.g. session lists). Prefers the given programme, then searches
 // all registered programmes.
@@ -157,7 +166,8 @@ export interface SessionStyle {
   reportTitle: string;
 }
 
-// Resolved session styling with viva defaults.
+// Resolved session styling with viva defaults. Only call this for stages where
+// hasLivePanel(stage) is true.
 export function getSessionStyle(stage: StageTemplate): SessionStyle {
   const s = stage.assessment?.session;
   return {

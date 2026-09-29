@@ -38,6 +38,7 @@ export default function SettingsPage() {
       const updated = await apiSend<AppSettings>("/api/settings", "PUT", settings);
       setSettings(updated);
       setSaved(true);
+      window.dispatchEvent(new Event("aiphd:programme-changed"));
     } catch (err) {
       setError(messageOf(err));
     } finally {

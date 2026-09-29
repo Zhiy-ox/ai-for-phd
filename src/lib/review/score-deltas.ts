@@ -1,6 +1,6 @@
 import type { DocumentKind } from "@/lib/db/repos/documents";
 import type { ReportRow } from "@/lib/db/repos/reports";
-import type { DocReviewResult } from "@/lib/review/types";
+import type { ReviewResult } from "@/lib/review/types";
 
 export interface ReviewDocumentIdentity {
   id: string;
@@ -8,10 +8,10 @@ export interface ReviewDocumentIdentity {
   kind: DocumentKind;
 }
 
-export function parseDocReviewResult(report: ReportRow): DocReviewResult | null {
+export function parseDocReviewResult(report: ReportRow): ReviewResult | null {
   if (!report.rubric_json) return null;
   try {
-    const parsed = JSON.parse(report.rubric_json) as DocReviewResult;
+    const parsed = JSON.parse(report.rubric_json) as ReviewResult;
     return parsed && Array.isArray(parsed.criteria) ? parsed : null;
   } catch {
     return null;

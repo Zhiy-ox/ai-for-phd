@@ -1,12 +1,23 @@
 import { describe, expect, it } from "vitest";
+import { mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import { completeJsonWithRetry, extractFencedJson } from "@/lib/shared/json-extract";
-import type {
-  AuthStatus,
-  CompleteOnceRequest,
-  LLMProvider,
-  ProviderEvent,
+import {
+  ProviderCallError,
+  type AuthStatus,
+  type CompleteOnceRequest,
+  type LLMProvider,
+  type ProviderEvent,
 } from "@/lib/providers/types";
-import { DEFAULT_PROGRAMME_ID, getProgramme, getStage } from "@/lib/template";
+import {
+  DEFAULT_PROGRAMME_ID,
+  getProgramme,
+  getStage,
+  hasLivePanel,
+  hasWrittenPeerReview,
+  listProgrammes,
+} from "@/lib/template";
 import { VIVA_COMPLETE_TOKEN, type QuestionPlan } from "@/lib/viva/types";
 import {
   buildPanelSystemPrompt,
@@ -14,8 +25,22 @@ import {
   stripVivaCompleteToken,
   VivaAssessmentSchema,
 } from "@/lib/viva/prompts";
-import { generateQuestionPlan } from "@/lib/viva/planner";
-import { DocReviewResultSchema } from "@/lib/review/prompts";
+import {
+  buildPeerReviewPrompt,
+  DocReviewResultSchema,
+  peerReviewResultSchemaForRubric,
+  PeerReviewResultSchema,
+} from "@/lib/review/prompts";
+
+// Planner calls now update advisory quota memory, so keep its integration
+// tests isolated from the owner's real local database.
+process.env.DATA_DIR = mkdtempSync(path.join(tmpdir(), "aiphd-planner-"));
+const { generateQuestionPlan } = await import("@/lib/viva/planner");
+const { startVivaSession } = await import("@/lib/viva/engine");
+const { renderPeerReviewMarkdown } = await import("@/lib/review/run");
+const { clearUsageLimit, recordUsageLimit, usageLimitedAt } = await import(
+  "@/lib/providers/usage"
+);
 
 function fence(json: unknown): string {
   return "```json\n" + JSON.stringify(json, null, 2) + "\n```";
@@ -23,7 +48,7 @@ function fence(json: unknown): string {
 
 type StubProvider = LLMProvider & { calls: CompleteOnceRequest[] };
 
-function stubProvider(responses: string[]): StubProvider {
+function stubProvider(responses: (string | Error)[]): StubProvider {
   const calls: CompleteOnceRequest[] = [];
   let i = 0;
   return {
@@ -38,6 +63,7 @@ function stubProvider(responses: string[]): StubProvider {
       calls.push(req);
       const response = responses[Math.min(i, responses.length - 1)];
       i += 1;
+      if (response instanceof Error) throw response;
       return response;
     },
     async checkAuth(): Promise<AuthStatus> {
@@ -70,6 +96,53 @@ const validReview = {
     },
   ],
   top_actions: ["Add uncertainty analysis to every quantitative claim."],
+};
+
+const peerSection = (
+  reviewer: "reviewer_1" | "reviewer_2" | "reviewer_3",
+  severity: "minor" | "moderate" | "major",
+  index: number,
+) => ({
+  reviewer,
+  anchor_quote: `verbatim manuscript phrase ${reviewer} ${index}`,
+  section_hint: `Section ${index}`,
+  severity,
+  comment: `Written comment ${index} from ${reviewer}.`,
+  suggestion: `Revise section ${index} with specific evidence.`,
+});
+
+const validPeerReview = {
+  format: "peer_review" as const,
+  summary: "A potentially publishable paper with substantial technical revisions required.",
+  recommendation: "major_revision" as const,
+  criteria: [
+    { id: "novelty", score: 2, comments: "The novelty case is incomplete." },
+    { id: "soundness", score: 2, comments: "Controls are incomplete." },
+    { id: "significance", score: 3, comments: "The field-level impact needs framing." },
+    { id: "clarity", score: 3, comments: "The argument needs tightening." },
+    { id: "reproducibility", score: 2, comments: "Reporting is not yet reproducible." },
+  ],
+  reviewer_summaries: {
+    reviewer_1: "The methods are promising but need clearer reporting.",
+    reviewer_2: "The central claims are not yet supported by the evidence presented.",
+    reviewer_3: "The significance needs stronger framing against prior work.",
+  },
+  sections: [
+    peerSection("reviewer_1", "moderate", 1),
+    peerSection("reviewer_1", "moderate", 2),
+    peerSection("reviewer_1", "minor", 3),
+    peerSection("reviewer_2", "major", 1),
+    peerSection("reviewer_2", "major", 2),
+    peerSection("reviewer_2", "moderate", 3),
+    peerSection("reviewer_3", "major", 1),
+    peerSection("reviewer_3", "moderate", 2),
+    peerSection("reviewer_3", "minor", 3),
+  ],
+  top_actions: [
+    "Add the missing control experiment.",
+    "Temper the novelty claim.",
+    "Clarify the statistical analysis.",
+  ],
 };
 
 describe("extractFencedJson", () => {
@@ -186,6 +259,115 @@ describe("schema round-trips", () => {
     };
     expect(DocReviewResultSchema.safeParse(bad).success).toBe(false);
   });
+
+  it("accepts exactly three written reviewers with Reviewer 2 most critical", () => {
+    expect(PeerReviewResultSchema.parse(validPeerReview)).toEqual(validPeerReview);
+  });
+
+  it("rejects a peer review when one reviewer is missing", () => {
+    const bad = {
+      ...validPeerReview,
+      sections: validPeerReview.sections.filter((section) => section.reviewer !== "reviewer_3"),
+    };
+    expect(PeerReviewResultSchema.safeParse(bad).success).toBe(false);
+  });
+
+  it("rejects a peer review when Reviewer 2 is not strictly the most critical", () => {
+    const bad = {
+      ...validPeerReview,
+      sections: validPeerReview.sections.map((section) =>
+        section.reviewer === "reviewer_2" && section.severity === "major"
+          ? { ...section, severity: "moderate" as const }
+          : section,
+      ),
+    };
+    expect(PeerReviewResultSchema.safeParse(bad).success).toBe(false);
+  });
+
+  it("allows a strong manuscript without inventing a major concern for Reviewer 2", () => {
+    const minorReview = {
+      ...validPeerReview,
+      recommendation: "minor_revision" as const,
+      sections: [
+        peerSection("reviewer_1", "minor", 1),
+        peerSection("reviewer_1", "minor", 2),
+        peerSection("reviewer_1", "minor", 3),
+        peerSection("reviewer_2", "minor", 1),
+        peerSection("reviewer_2", "minor", 2),
+        peerSection("reviewer_2", "minor", 3),
+        peerSection("reviewer_2", "minor", 4),
+        peerSection("reviewer_3", "minor", 1),
+        peerSection("reviewer_3", "minor", 2),
+        peerSection("reviewer_3", "minor", 3),
+      ],
+    };
+    expect(PeerReviewResultSchema.safeParse(minorReview).success).toBe(true);
+  });
+
+  it("requires every stage rubric criterion exactly once", () => {
+    const stage = getStage(DEFAULT_PROGRAMME_ID, "papers");
+    const schema = peerReviewResultSchemaForRubric(stage.assessment!.rubric);
+    expect(schema.safeParse(validPeerReview).success).toBe(true);
+    expect(
+      schema.safeParse({ ...validPeerReview, criteria: validPeerReview.criteria.slice(0, -1) })
+        .success,
+    ).toBe(false);
+  });
+});
+
+describe("written peer review", () => {
+  const stage = getStage(DEFAULT_PROGRAMME_ID, "papers");
+
+  it("marks papers as written review rather than a live panel", () => {
+    for (const programme of listProgrammes()) {
+      const paperStage = programme.stages.find((candidate) => candidate.id === "papers")!;
+      expect(hasWrittenPeerReview(paperStage)).toBe(true);
+      expect(hasLivePanel(paperStage)).toBe(false);
+      expect(paperStage.assessment?.panel.map((reviewer) => reviewer.name)).toEqual([
+        "Reviewer 1",
+        "Reviewer 2",
+        "Reviewer 3",
+      ]);
+      expect(paperStage.assessment?.panel[1].style).toMatch(/most hostile/i);
+    }
+  });
+
+  it("fixes Reviewer 2 as the hostile reviewer in the one-shot prompt", () => {
+    const prompt = buildPeerReviewPrompt({
+      stage,
+      rubric: stage.assessment!.rubric,
+      docTitle: "manuscript.md",
+      docText: "The manuscript claims a large improvement without a control measurement.",
+    });
+    expect(prompt.systemPrompt).toContain("asynchronous written peer review");
+    expect(prompt.systemPrompt).toContain("Reviewer 2 — ALWAYS the most hostile");
+    expect(prompt.systemPrompt).toContain("highest overall criticality");
+    expect(prompt.systemPrompt).toContain("does not require inventing a major flaw");
+    expect(prompt.systemPrompt).toContain("never a viva, interview, chat, or role-play");
+  });
+
+  it("renders three ordered, numbered reviewer sections", () => {
+    const markdown = renderPeerReviewMarkdown(
+      stage,
+      stage.assessment!.rubric,
+      "manuscript.md",
+      validPeerReview,
+    );
+    expect(markdown.indexOf("## Reviewer 1")).toBeLessThan(
+      markdown.indexOf("## Reviewer 2 — most hostile"),
+    );
+    expect(markdown.indexOf("## Reviewer 2 — most hostile")).toBeLessThan(
+      markdown.indexOf("## Reviewer 3"),
+    );
+    expect(markdown).toContain("1. **Major — Section 1**");
+    expect(markdown).toContain("**Suggested revision:**");
+  });
+
+  it("refuses to start a live session for papers", async () => {
+    await expect(
+      startVivaSession({ stageId: "papers", documentIds: [], mode: "drill" }),
+    ).rejects.toThrow(/written reviewer comments/i);
+  });
 });
 
 describe("generateQuestionPlan", () => {
@@ -222,6 +404,19 @@ describe("generateQuestionPlan", () => {
     const plan = await generateQuestionPlan(provider, undefined, stage, "report text");
     expect(plan).toBeUndefined();
     expect(provider.calls).toHaveLength(2);
+  });
+
+  it("records and clears quota memory through the planner call path", async () => {
+    recordUsageLimit("claude");
+    await generateQuestionPlan(stubProvider([fence(validPlan)]), undefined, stage, "report text");
+    expect(usageLimitedAt("claude")).toBeNull();
+
+    const quotaError = new ProviderCallError("usage_limit", "window exhausted");
+    await expect(
+      generateQuestionPlan(stubProvider([quotaError]), undefined, stage, "report text"),
+    ).rejects.toBe(quotaError);
+    expect(usageLimitedAt("claude")).not.toBeNull();
+    clearUsageLimit("claude");
   });
 });
 

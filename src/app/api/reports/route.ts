@@ -1,5 +1,10 @@
 import { z } from "zod";
-import { listReports, type ReportType } from "@/lib/db/repos/reports";
+import {
+  listReports,
+  listReportSummaries,
+  type ReportType,
+} from "@/lib/db/repos/reports";
+import { getActiveProgrammeId } from "@/lib/programme";
 
 export const dynamic = "force-dynamic";
 
@@ -19,7 +24,18 @@ export async function GET(request: Request): Promise<Response> {
     }
     const documentId = url.searchParams.get("documentId") ?? undefined;
     const sessionId = url.searchParams.get("sessionId") ?? undefined;
-    return Response.json({ reports: listReports({ documentId, sessionId, type }) });
+    const stageId = url.searchParams.get("stageId") ?? undefined;
+    const summary = url.searchParams.get("summary") === "1";
+    const filter = {
+      programmeId: getActiveProgrammeId(),
+      stageId,
+      documentId,
+      sessionId,
+      type,
+    };
+    return Response.json({
+      reports: summary ? listReportSummaries(filter) : listReports(filter),
+    });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     return Response.json({ error: message }, { status: 500 });

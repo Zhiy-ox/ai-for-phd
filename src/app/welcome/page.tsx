@@ -53,6 +53,7 @@ export default function WelcomePage() {
         }
       }
       await apiSend("/api/settings", "PUT", { onboarded: "1" });
+      if (!skip) window.dispatchEvent(new Event("aiphd:programme-changed"));
       router.replace("/");
     } catch (err) {
       setError(messageOf(err));

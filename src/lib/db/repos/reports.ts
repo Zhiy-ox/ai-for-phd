@@ -13,6 +13,16 @@ export interface ReportRow {
   created_at: string;
 }
 
+export type ReportSummary = Omit<ReportRow, "rubric_json" | "content_md">;
+
+interface ReportFilter {
+  programmeId?: string;
+  stageId?: string;
+  sessionId?: string;
+  documentId?: string;
+  type?: ReportType;
+}
+
 export function insertReport(r: {
   sessionId?: string | null;
   documentId?: string | null;
@@ -45,29 +55,64 @@ export function getReport(id: string): ReportRow | null {
     null) as ReportRow | null;
 }
 
-export function listReports(filter?: {
-  sessionId?: string;
-  documentId?: string;
-  type?: ReportType;
-}): ReportRow[] {
+function reportFilter(filter?: ReportFilter): { where: string; values: string[] } {
   const clauses: string[] = [];
   const values: string[] = [];
+  if (filter?.programmeId && filter?.stageId) {
+    clauses.push(
+      "((d.programme_id = ? AND d.stage_id = ?) OR (s.programme_id = ? AND s.stage_id = ?))",
+    );
+    values.push(filter.programmeId, filter.stageId, filter.programmeId, filter.stageId);
+  } else if (filter?.programmeId) {
+    clauses.push("(d.programme_id = ? OR s.programme_id = ?)");
+    values.push(filter.programmeId, filter.programmeId);
+  } else if (filter?.stageId) {
+    clauses.push("(d.stage_id = ? OR s.stage_id = ?)");
+    values.push(filter.stageId, filter.stageId);
+  }
   if (filter?.sessionId) {
-    clauses.push("session_id = ?");
+    clauses.push("r.session_id = ?");
     values.push(filter.sessionId);
   }
   if (filter?.documentId) {
-    clauses.push("document_id = ?");
+    clauses.push("r.document_id = ?");
     values.push(filter.documentId);
   }
   if (filter?.type) {
-    clauses.push("type = ?");
+    clauses.push("r.type = ?");
     values.push(filter.type);
   }
   const where = clauses.length ? `WHERE ${clauses.join(" AND ")}` : "";
+  return { where, values };
+}
+
+export function listReports(filter?: ReportFilter): ReportRow[] {
+  const { where, values } = reportFilter(filter);
   return getDb()
-    .prepare(`SELECT * FROM reports ${where} ORDER BY created_at DESC`)
+    .prepare(
+      `SELECT r.*
+       FROM reports r
+       LEFT JOIN documents d ON d.id = r.document_id
+       LEFT JOIN sessions s ON s.id = r.session_id
+       ${where}
+       ORDER BY r.created_at DESC, r.rowid DESC`,
+    )
     .all(...values) as unknown as ReportRow[];
+}
+
+/** Body-free rows for list screens; full report content stays on the detail route. */
+export function listReportSummaries(filter?: ReportFilter): ReportSummary[] {
+  const { where, values } = reportFilter(filter);
+  return getDb()
+    .prepare(
+      `SELECT r.id, r.session_id, r.document_id, r.type, r.verdict, r.created_at
+       FROM reports r
+       LEFT JOIN documents d ON d.id = r.document_id
+       LEFT JOIN sessions s ON s.id = r.session_id
+       ${where}
+       ORDER BY r.created_at DESC, r.rowid DESC`,
+    )
+    .all(...values) as unknown as ReportSummary[];
 }
 
 // For user-edited reports (e.g. rebuttal letters polished before sending).

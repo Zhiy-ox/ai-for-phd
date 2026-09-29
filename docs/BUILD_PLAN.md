@@ -4,7 +4,7 @@
 > Code, Codex) and human working on this repo: what the product is, what has
 > been built, what is in flight, what comes next, and the working agreements.
 > **Read this before writing code. Update it when you ship or re-scope
-> anything.** Last updated: 2026-07-11 (future roadmap added).
+> anything.** Last updated: 2026-07-16 (written peer-review workflow shipped).
 
 ---
 
@@ -14,8 +14,9 @@
 structures a PhD as a journey of formal gates (transfer/upgrade viva,
 confirmation, papers & rebuttals, thesis, final defence) and uses AI to play
 the institutional counterpart: assessor panels that grill you in mock vivas,
-Reviewer 2 attacking your manuscript, rubric-scored document feedback with
-GSO-style verdict reports. **No API keys, no cloud**: the AI runs through the
+three written reviewers returning journal-style manuscript comments (with
+Reviewer 2 always the toughest), rubric-scored document feedback with GSO-style
+verdict reports. **No API keys, no cloud**: the AI runs through the
 locally installed Claude Code and/or Codex CLIs on the user's own
 subscriptions; all data stays in `data/` on the user's machine.
 
@@ -37,7 +38,7 @@ subscriptions; all data stays in `data/` on the user's machine.
 
 **Stack:** Next.js 16 (App Router, TS, Tailwind v4), Node ≥ 22.13,
 `node:sqlite` (no ORM, no native deps), zod for validation, react-markdown.
-Fonts: Geist (sans) + Newsreader (display serif). Tests: vitest.
+Fonts: locally bundled Geist (sans) + Newsreader (display serif). Tests: vitest.
 
 **Data flow:** client pages (`"use client"`, fetch on mount) → API route
 handlers (`src/app/api/**`, Node runtime, zod-validated) → repos (prepared
@@ -52,7 +53,7 @@ src/
 │   ├── programme.ts      # getActiveProgramme() — reads settings.programme_id (server only)
 │   ├── db/
 │   │   ├── client.ts     # node:sqlite singleton, dataDir/documentsDir/scratchDir
-│   │   ├── migrations.ts # append-only array, PRAGMA user_version (v1 core, v2 findings)
+│   │   ├── migrations.ts # append-only array, PRAGMA user_version (v1–v5)
 │   │   └── repos/        # stage-instances, documents, sessions, reports, settings, findings
 │   ├── providers/
 │   │   ├── types.ts      # LLMProvider contract: streamTurn/completeOnce/checkAuth, ProviderEvent
@@ -60,13 +61,14 @@ src/
 │   │   ├── codex.ts      # @openai/codex-sdk adapter (threads, read-only sandbox)
 │   │   ├── registry.ts   # getProvider / resolveProviderAndModel (settings defaults)
 │   │   ├── binaries.ts   # auto-detect claude/codex on PATH + common dirs (env vars override)
-│   │   └── auth-status.ts# `claude auth status` / `codex login status`, 5-min cache
+│   │   ├── auth-status.ts# `claude auth status` / `codex login status`, 5-min cache
+│   │   └── usage*.ts     # failure-safe usage-window memory for streams + one-shots
 │   ├── viva/             # engine.ts (session loop), prompts.ts (panel/assessment), planner.ts, report.ts, types.ts
 │   ├── review/           # one-shot rubric doc review + score-delta history selection
 │   ├── extraction/       # pdf (unpdf), docx (mammoth), plain text
 │   ├── shared/json-extract.ts # completeJsonWithRetry — fenced-JSON + one re-emit retry
 │   └── sse.ts            # AsyncGenerator → text/event-stream Response
-├── app/                  # pages: / (dashboard), /welcome (wizard), /stages/[stageId] (?tab=),
+├── app/                  # pages: / (dashboard), /welcome (wizard), /stages/[stageId] (?step=),
 │   │                     #   /documents(+/[id]), /sessions(+/[id] dark viva room), /reports/[id], /settings
 │   └── api/              # programme(+current-stage), stages/[stageId], documents(+[id]/text|review),
 │                         #   sessions(+[id]/turns SSE|end), reports, providers/status, settings
@@ -79,8 +81,10 @@ src/
   `src/templates/*.ts`, zod-validated at import. Shared stage ids across
   templates (`papers`, `thesis`, `final-viva`, `corrections`) keep
   `STAGE_PRIMARY_KIND` and UI defaults working.
-- Stages with `assessment` get an interview tab; review-only stages use
-  `reviewRubric`. Per-stage `assessment.session` styles the exercise
+- `assessment.interaction` is the routing contract: `interview` stages get a
+  live panel, while `written_peer_review` stages get an asynchronous written
+  report. Stages without an assessment can use `reviewRubric`. Per-stage
+  `assessment.session` styles live exercises only
   (label/brief/opening/reportTitle).
 - Providers must **never** gain filesystem/tool access (Claude:
   `allowedTools: []`, empty scratch cwd; Codex: read-only sandbox).
@@ -88,7 +92,9 @@ src/
   with codes (`not_logged_in`, `usage_limit`, `session_expired`, …); every
   turn is persisted so transcript-replay can rebuild a dead provider session.
 - Migrations are **append-only**; never edit a shipped entry.
-- All model JSON outputs go through `completeJsonWithRetry` with a zod schema.
+- All model JSON outputs go through `completeJsonWithUsageTracking` →
+  `completeJsonWithRetry` with a zod schema; the shared JSON parser remains
+  provider/DB-independent.
 
 ---
 
@@ -96,18 +102,18 @@ src/
 
 | Area | Status | Notes |
 |---|---|---|
-| 7-stage Oxford DPhil journey | ✅ | 4 panel stages (Transfer, Confirmation, Papers/Rebuttal, Final Viva) + 3 review-only (PRS, Thesis, Corrections) |
+| 7-stage Oxford DPhil journey | ✅ | 3 live panel stages (Transfer, Confirmation, Final Viva) + written three-referee Papers/Rebuttals + 3 review-only stages (PRS, Thesis, Corrections) |
 | Mock viva engine | ✅ | question planner → 2-persona panel prompt → streamed turns with follow-up pressure → `<viva-complete/>` detection → GSO-style assessment report (verdict + rubric scores) |
 | Rubric document review | ✅ | anchored verbatim quotes, severity-graded findings, top actions |
 | Dual subscription backends | ✅ | Claude Code + Codex, switchable per session, live auth status, CLI auto-detect (no .env.local) |
 | Voice viva | ✅ | Web Speech API STT (push-to-talk → editable transcript → send) + read-aloud TTS toggle |
 | Redesigned UI | ✅ | cream/royal-blue design system, Newsreader serif, masthead, milestone rail + gate-seal dashboard, dark viva room (from the owner's Claude Design spec) |
-| Current-stage dashboard | ✅ | next-move nudge, docs/sessions/reports summaries, "Where are you?" (POST `/api/programme/current-stage`) |
+| Current-stage dashboard | ✅ | compact programme-scoped activity, truthful next-move/readiness, "Where are you?" (POST `/api/programme/current-stage`) |
 | Programme presets + wizard | ✅ | oxford-dphil / generic-uk-phd / us-phd; `/welcome` first-run wizard; `settings.programme_id`; Settings programme card |
 | Examiner styles | ✅ | `PanelStyle` (supportive/standard/hostile + focus) → planner & panel prompts; picker in session setup |
 | Open-source release | ✅ | MIT LICENSE, product README, repo public with topics |
 | Motion & first-run guidance | ✅ | `anim-*` entrance utilities + celebration `Burst`/`TypingDots`/`AnimatedCheck` (ui.tsx), staggered page/tab/list transitions everywhere, weakness-resolve & pass-verdict celebrations, dashboard coach-mark tour (`coach-tour.tsx`) + guided empty states |
-| Tests | ✅ | 76 vitest tests: extraction (fixtures incl. hand-built PDF), provider event mapping, JSON parse/retry, template validation, findings, score-delta selection |
+| Tests | ✅ | 123 vitest tests: extraction, providers/quota memory, JSON parse/retry, templates, written peer review/rebuttal coverage (incl. failed-draft retry), findings/score deltas, programme boundaries, migration v5 backfill, stage activity |
 
 ---
 
@@ -176,19 +182,20 @@ standing weaknesses.
 
 ## 5. Roadmap after Phase B
 
-- ✅ **Phase C — Rebuttal-letter drafter** (Claude, 2026-07-11). From an
-  ended sparring session on any `rebuttal_roleplay` stage:
-  `src/lib/rebuttal/run.ts` (`draftRebuttalLetter` — mines the manuscript,
-  the uploaded referee reports when present, and the sparring transcript;
-  `RebuttalLetterSchema` zod → `renderRebuttalMarkdown`), stored as report
-  type `rebuttal_letter`. Routes: `POST /api/sessions/[id]/rebuttal-letter`
-  → `{reportId}`; `PATCH /api/reports/[id]` `{contentMd}` saves user edits
-  (`updateReportContent`). UI: gold "Draft rebuttal letter" button in the
-  viva-room bench for ended rebuttal sessions (→ "View rebuttal letter" once
-  drafted); report page renders `rebuttal_letter` as an editable
-  markdown textarea with Save / Download .md / live preview.
-  NOT yet live-tested end-to-end (drafting spends quota) — the first real
-  draft after an actual sparring run is the acceptance test.
+- ✅ **Phase C — Rebuttal-letter drafter** (Claude, 2026-07-11; written-review
+  flow revised by Codex, 2026-07-16). Originally drafted from an ended legacy
+  `rebuttal_roleplay` session; the primary path now drafts directly from a
+  structured written peer-review report:
+  `src/lib/rebuttal/run.ts` contains `draftRebuttalLetterFromReview` plus the
+  legacy transcript-backed `draftRebuttalLetter`; both validate through
+  `RebuttalLetterSchema` and `renderRebuttalMarkdown`, stored as report type
+  `rebuttal_letter`. `POST /api/reports/[id]/rebuttal-letter` covers every
+  numbered Reviewer 1/2/3 point; the old session route remains for existing
+  history. `PATCH /api/reports/[id]` saves user edits. The written-comments
+  report exposes "Draft response letter", then the report page provides Save,
+  Download .md, and live preview. NOT yet live-tested end-to-end (drafting
+  spends quota) — the first real draft from written comments is the acceptance
+  test.
 - ✅ **Practice gym — quick-fire drills** (Claude, 2026-07-11). Session
   setup gains a mode toggle (full session / drill). Drills:
   `VivaConfig.mode="drill"`, no document required, planner skipped, lead
@@ -233,12 +240,28 @@ standing weaknesses.
   change) and "Press me especially on…" preset target chips that combine
   with the free-text focus. All verified live.
 
+- ✅ **Written three-reviewer paper workflow** (Codex, 2026-07-16; owner
+  directive). `assessment.interaction` now distinguishes live interviews from
+  `written_peer_review`. All Papers & Rebuttals presets use a one-shot written
+  packet from Reviewer 1 (constructive methods), Reviewer 2 (always the most
+  hostile on novelty/soundness), and Reviewer 3 (significance/framing). The
+  validated peer-review schema requires all three voices, every rubric
+  criterion exactly once, and a strictly higher severity-weighted criticality
+  score for Reviewer 2 without forcing an invented major flaw. Paper stages no
+  longer expose panel casting, drills, chat, or voice; Feedback becomes
+  Reviewer comments, reports render stacked numbered bullets with anchored
+  quotes and suggested revisions, and response letters draft directly from
+  the written packet with one validated response per numbered point. Repeated
+  drafting reopens the existing response instead of spending quota again. New
+  live paper sessions are rejected while legacy sessions/reports remain
+  readable but cannot accept new turns.
+
 ### Future roadmap (added 2026-07-11) — the next-gen todo list
 
 **M0 — Validation sprint (owner-led; before building more).** Run the real
 thing: actual transfer draft → rubric review → full mock viva → assessment →
 ledger populates → quick-fire drill retires an item → re-review shows ▲
-deltas → one real rebuttal letter from a sparring session. Both providers
+deltas → one real Reviewer 1/2/3 packet → rebuttal letter. Both providers
 exercised. File every paper-cut as a GitHub issue. *Exit criteria: the loop
 survives a real document, `weakness_updates` returns from both providers,
 and the owner would voluntarily run a second drill.*
@@ -270,25 +293,58 @@ and the owner would voluntarily run a second drill.*
   retry-after-provider-error still needs a live error to exercise.
 - ✅ **Guided stage stepper** (Claude, 2026-07-16) — the stage tab strip is
   now a numbered stepper: Submit → Feedback → Face the panel → The record
-  (review-only stages skip the panel step). Step states derive from live
-  stage data (readable docs / doc reviews / sessions / reports) fetched at
-  page level and refreshed via an `onActivity` callback from the documents
-  view; done steps show green draw-in checks with green connectors; the
-  current step is the blue node. Submit and Feedback both open the
-  documents view (that is where both actions live); `?tab=viva|reports`
-  deep links map to the panel/record steps and fall back to Submit on
-  review-only stages. Verified live on transfer (4 steps, all done) and
-  thesis (3 steps).
+  (review-only stages skip the panel step; Papers uses Submit → Reviewer
+  comments → The record). `?step=submit|feedback|panel|record`
+  makes every destination bookmarkable while old `?tab=` links still work.
+  Feedback has its own focused workspace. A compact programme-scoped endpoint
+  supplies readable/review/report counts, latest report id, and a three-state
+  panel status; merely creating or abandoning a session cannot mark it done.
+  The semantic nav/list exposes current/completed/in-progress state to assistive
+  technology, with visible focus, 44px targets, stronger contrast, and explicit
+  loading/error states. Dashboard readiness uses the same source of truth.
 - ✅ **Quota UX** (Claude, 2026-07-16) — `src/lib/providers/usage.ts`
   remembers each provider's last `usage_limit` error in settings
   (`claude_limited_at`/`codex_limited_at`; NOT settable via the settings
   PUT schema), auto-expires after 5h, and is cleared by the next
-  successful turn. The engine records/clears on streamed turns (the main
-  quota consumer — one-shot planner/review calls intentionally NOT hooked:
-  they funnel through the DB-less shared JSON helper); `GET
+  successful provider attempt. Streamed turns and every underlying one-shot
+  planner/review/report/rebuttal attempt (including JSON retries) are tracked;
+  advisory SQLite failures never replace provider results or errors. `GET
   /api/providers/status` returns fresh `limitedAt` per provider; the
   ProviderPicker shows an amber "hit its usage window at HH:MM — <other>
-  looks fresher" note. 4 unit tests (record/clear/expiry/garbage).
+  looks fresher" note.
+- ✅ **M1 hardening + release cleanup** (Codex, 2026-07-16) — v5 assigns
+  documents/sessions to validated programmes, scopes collections and AI
+  actions to that ownership boundary, and safely backfills legacy rows.
+  Stage/dashboard list views use compact activity/report summaries instead of
+  downloading report bodies. The masthead follows the selected programme and
+  exposes active-page semantics. Geist and Newsreader are bundled locally, so
+  production builds no longer depend on Google Fonts. Verified with the full
+  then-current 104-test suite and a clean production build. Isolated browser acceptance
+  covered direct Feedback URLs + Back/Forward/focus, legacy tab links,
+  programme switching, honest active-session progress, and 375/768/1024/1440
+  layouts with no horizontal overflow or browser warnings.
+- ✅ **Code-review fixes on the hardening batch** (Claude, 2026-09-29).
+  (1) Failed response-letter drafts no longer block retries:
+  `src/lib/rebuttal/meta.ts` `responseLetterMeta()` (client-safe) marks a
+  letter `complete` only when its rubric has parsed `points`; the drafter's
+  reuse check and the report page's "View response letter" both require it,
+  while failed drafts keep `source_review_id` for back-navigation.
+  (2) Migration v5 edited in place (unpushed; the owner's DB already ran it
+  with zero mismatches): documents now take the programme of the EARLIEST
+  session whose `config.documentIds` names them, falling back to the selected
+  programme, then the default — `tests/migrations.test.ts` builds a v4 DB in
+  memory. (3) Gate summary: latest scores come from viva assessments OR
+  reviews (newest wins); readiness reads `/api/stages/:id/activity` so
+  "Panel faced" needs an ended session/assessment; reports load via
+  `?stageId=`; the prompts module is no longer bundled client-side.
+  (4) `RebuttalRequestError(400|404|409)` → the rebuttal route maps input
+  errors to 4xx, only real failures to 500. (5) Feedback-step focus fires
+  once per step entry (ref), not on every document reload. (6) Masthead
+  names come from `listProgrammes()`; settings fetched once + on
+  `aiphd:programme-changed` (both writers dispatch it). (7) Stage pages
+  import `StageActivity`/`PanelProgress` from the repo instead of redeclaring.
+  (8) Session views resolve stages with `findStage(stageId,
+  session.programme_id)`. 123 tests.
 
 **M2 — Public launch (v1.2).**
 - `docs/` landing page on GitHub Pages: screenshots, a 60-second demo
@@ -325,7 +381,7 @@ colleague, not Duolingo.
 ## 6. Working agreements (both agents)
 
 - **Verify before done:** `npx tsc --noEmit && npx eslint src scripts tests
-  && npx vitest run && npm run build` — all must be clean. 76+ tests stay
+  && npx vitest run && npm run build` — all must be clean. 118+ tests stay
   green; add tests for new pure logic.
 - **Live checks:** `npm run dev` (port 3000). The owner often runs his own
   server on 3000 — check before killing anything, and stop servers you

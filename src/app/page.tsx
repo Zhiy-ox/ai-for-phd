@@ -3,15 +3,20 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState, type CSSProperties } from "react";
-import { getSessionStyle, type ProgrammeTemplate, type StageTemplate } from "@/lib/template";
+import {
+  getSessionStyle,
+  hasLivePanel,
+  hasWrittenPeerReview,
+  type ProgrammeTemplate,
+  type StageTemplate,
+} from "@/lib/template";
 import type { StageInstance, StageStatus } from "@/lib/db/repos/stage-instances";
-import type { DocumentSummary } from "@/lib/db/repos/documents";
 import type { SessionRow } from "@/lib/db/repos/sessions";
-import type { ReportRow } from "@/lib/db/repos/reports";
 import type { FindingRow } from "@/lib/db/repos/findings";
+import type { StageActivity } from "@/lib/db/repos/stage-activity";
 import type { AppSettings } from "@/lib/db/repos/settings";
 import { apiGet, apiSend, formatDate, messageOf } from "@/components/api";
-import { AnimatedCheck, ErrorBanner, PageLoading } from "@/components/ui";
+import { AnimatedCheck, ErrorBanner, PageLoading, Spinner } from "@/components/ui";
 import { CoachTour, TOUR_DONE_KEY, type TourStep } from "@/components/coach-tour";
 import { CountdownChip, isGateUrgent } from "@/components/countdown";
 import { daysUntil, formatCountdown } from "@/lib/dates";
@@ -23,9 +28,8 @@ interface ProgrammeResponse {
 
 interface StageInfo {
   stageId: string;
-  docs: DocumentSummary[];
+  activity: StageActivity;
   sessions: SessionRow[];
-  reports: ReportRow[];
   findings: FindingRow[];
 }
 
@@ -42,17 +46,17 @@ const TOUR_STEPS: TourStep[] = [
   {
     id: "next-move",
     title: "Never wonder what to do next",
-    body: "The app always names exactly one next action for your current gate: upload a draft, get feedback, or face the panel. When in doubt, press this button.",
+    body: "The app always names exactly one next action for your current gate: upload a draft, get feedback, or rehearse an assessment when the stage has one. When in doubt, press this button.",
   },
   {
     id: "readiness",
-    title: "Three checks to gate-ready",
-    body: "Document in, feedback in hand, panel faced. When all three light up green, you've rehearsed the gate end-to-end — before it counts.",
+    title: "Your checks to gate-ready",
+    body: "Document in and feedback in hand; stages with a live assessment add a completed panel rehearsal. When every check lights up green, you've rehearsed the gate end-to-end — before it counts.",
   },
   {
     id: "weaknesses",
     title: "The panel remembers",
-    body: "Weaknesses found in feedback and mock vivas are kept on a ledger, and every future panel re-attacks them until you've closed them out.",
+    body: "Weaknesses found in written feedback and mock vivas are kept on a ledger, so later reviews and panels can keep pressure on them until you've closed them out.",
   },
   {
     id: "journey",
@@ -92,11 +96,23 @@ interface NextMove {
   cta: string;
 }
 
-function nextMove(stage: StageTemplate, info: StageInfo | null): NextMove {
+function nextMove(
+  stage: StageTemplate,
+  info: StageInfo | null,
+  infoError: string | null,
+): NextMove {
   const style = getSessionStyle(stage);
+  if (infoError) {
+    return {
+      text: "Stage activity could not be checked. Open the stage to continue safely.",
+      href: `/stages/${stage.id}`,
+      cta: "Open stage",
+    };
+  }
   if (!info) return { text: "Loading your stage…", href: `/stages/${stage.id}`, cta: "Enter stage" };
-  const readable = info.docs.filter((d) => d.has_text);
-  const live = info.sessions.find((s) => s.status === "active");
+  const live = hasLivePanel(stage)
+    ? info.sessions.find((s) => s.status === "active")
+    : undefined;
   const primaryDoc = stage.requiredDocuments[0]?.title.toLowerCase() ?? "document";
   if (live) {
     return {
@@ -105,31 +121,41 @@ function nextMove(stage: StageTemplate, info: StageInfo | null): NextMove {
       cta: "Resume session",
     };
   }
-  if (readable.length === 0) {
+  if (info.activity.readable === 0) {
     return {
       text: `Upload your ${primaryDoc} — the AI reads it in full before any feedback or interview.`,
-      href: `/stages/${stage.id}?tab=documents`,
+      href: `/stages/${stage.id}?step=submit`,
       cta: "Upload document",
     };
   }
-  if (info.reports.length === 0) {
+  if (info.activity.reviews === 0) {
     return {
-      text: "Your document is in. Get rubric-scored feedback before facing anyone.",
-      href: `/stages/${stage.id}?tab=documents`,
-      cta: "Get feedback",
+      text: hasWrittenPeerReview(stage)
+        ? "Your manuscript is in. Generate written reports from Reviewer 1, Reviewer 2, and Reviewer 3."
+        : hasLivePanel(stage)
+          ? "Your document is in. Get rubric-scored feedback before the panel exercise."
+          : "Your document is in. Get rubric-scored feedback against this stage's criteria.",
+      href: `/stages/${stage.id}?step=feedback`,
+      cta: hasWrittenPeerReview(stage) ? "Generate reviewer comments" : "Get feedback",
     };
   }
-  if (stage.assessment && info.sessions.length === 0) {
+  if (hasLivePanel(stage) && info.activity.panelState !== "complete") {
     return {
-      text: `Feedback in hand — time to face the panel in a ${style.label.toLowerCase()}.`,
-      href: `/stages/${stage.id}?tab=viva`,
+      text:
+        info.activity.panelState === "in_progress"
+          ? `Your panel rehearsal is not complete yet — resume or begin a fresh ${style.label.toLowerCase()}.`
+          : `Feedback in hand — time to face the panel in a ${style.label.toLowerCase()}.`,
+      href: `/stages/${stage.id}?step=panel`,
       cta: `Begin ${style.label.toLowerCase()}`,
     };
   }
+  const latestReportId = info.activity.latestReportId;
   return {
     text: "Work the latest report's weaknesses into the next draft, then go again.",
-    href: `/reports/${info.reports[0].id}`,
-    cta: "Open latest report",
+    href: latestReportId
+      ? `/reports/${latestReportId}`
+      : `/stages/${stage.id}?step=record`,
+    cta: latestReportId ? "Open latest report" : "Open the record",
   };
 }
 
@@ -251,23 +277,27 @@ function HeroCurrentStage({
   instance,
   numeral,
   info,
+  infoError,
   onEditStages,
 }: {
   stage: StageTemplate;
   instance?: StageInstance;
   numeral: string;
   info: StageInfo | null;
+  infoError: string | null;
   onEditStages: () => void;
 }) {
-  const move = nextMove(stage, info);
+  const move = nextMove(stage, info, infoError);
   const urgent = isGateUrgent(instance?.target_date);
   const targetDays = instance?.target_date ? daysUntil(instance.target_date) : null;
-  const readable = (info?.docs ?? []).filter((d) => d.has_text);
   const readiness = [
-    { label: "Document uploaded", done: readable.length > 0 },
-    { label: "Feedback in hand", done: (info?.reports.length ?? 0) > 0 },
-    ...(stage.assessment
-      ? [{ label: "Panel faced", done: (info?.sessions.length ?? 0) > 0 }]
+    { label: "Document uploaded", done: (info?.activity.readable ?? 0) > 0 },
+    {
+      label: hasWrittenPeerReview(stage) ? "Reviewer comments received" : "Feedback in hand",
+      done: (info?.activity.reviews ?? 0) > 0,
+    },
+    ...(hasLivePanel(stage)
+      ? [{ label: "Panel faced", done: info?.activity.panelState === "complete" }]
       : []),
   ];
   return (
@@ -362,7 +392,7 @@ function HeroCurrentStage({
               </ul>
               {info.findings.length > 3 ? (
                 <Link
-                  href={`/stages/${stage.id}?tab=reports`}
+                  href={`/stages/${stage.id}?step=record`}
                   className="mt-1.5 inline-block text-xs font-medium text-oxford hover:underline"
                 >
                   All {info.findings.length} →
@@ -371,18 +401,32 @@ function HeroCurrentStage({
             </div>
           ) : null}
 
-          <div className="mt-5 flex flex-wrap gap-5" data-tour="readiness">
-            {readiness.map((r) => (
-              <div
-                key={r.label}
-                className="flex items-center gap-2 text-[13px] transition-colors duration-300"
-                style={{ color: r.done ? "#2eb87a" : "#98a1ab" }}
-              >
-                <AnimatedCheck done={r.done} />
-                {r.label}
-              </div>
-            ))}
-          </div>
+          {info ? (
+            <div className="mt-5 flex flex-wrap gap-5" data-tour="readiness">
+              {readiness.map((r) => (
+                <div
+                  key={r.label}
+                  className="flex items-center gap-2 text-[13px] transition-colors duration-300"
+                  style={{ color: r.done ? "#1f7a52" : "#5b6673" }}
+                >
+                  <AnimatedCheck done={r.done} doneColor="#1f7a52" />
+                  {r.label}
+                </div>
+              ))}
+            </div>
+          ) : infoError ? (
+            <p
+              role="alert"
+              className="mt-5 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800"
+            >
+              Readiness could not be loaded: {infoError}
+            </p>
+          ) : (
+            <p role="status" className="mt-5 flex items-center gap-2 text-sm text-ink-soft">
+              <Spinner className="h-4 w-4 text-oxford" />
+              Checking stage readiness…
+            </p>
+          )}
         </div>
 
         {/* Gate seal */}
@@ -659,6 +703,10 @@ export default function DashboardPage() {
   const [error, setError] = useState<string | null>(null);
   const [currentStageId, setCurrentStageId] = useState<string | null>(null);
   const [stageInfo, setStageInfo] = useState<StageInfo | null>(null);
+  const [stageInfoError, setStageInfoError] = useState<{
+    stageId: string;
+    message: string;
+  } | null>(null);
   const [onboardingOpen, setOnboardingOpen] = useState(false);
   const [tourOpen, setTourOpen] = useState(false);
 
@@ -701,31 +749,27 @@ export default function DashboardPage() {
     let cancelled = false;
     (async () => {
       try {
-        const [{ documents }, { sessions }, { reports }, { findings }] = await Promise.all([
-          apiGet<{ documents: DocumentSummary[] }>(`/api/documents?stageId=${currentStageId}`),
+        const [{ activity }, { sessions }, { findings }] = await Promise.all([
+          apiGet<{ activity: StageInfo["activity"] }>(
+            `/api/stages/${currentStageId}/activity`,
+          ),
           apiGet<{ sessions: SessionRow[] }>(`/api/sessions?stageId=${currentStageId}`),
-          apiGet<{ reports: ReportRow[] }>("/api/reports"),
           apiGet<{ findings: FindingRow[] }>(
             `/api/findings?stageId=${currentStageId}&unresolved=1`,
           ).catch(() => ({ findings: [] as FindingRow[] })),
         ]);
         if (cancelled) return;
-        const sessionIds = new Set(sessions.map((s) => s.id));
-        const docIds = new Set(documents.map((d) => d.id));
+        setStageInfoError(null);
         setStageInfo({
           stageId: currentStageId,
-          docs: documents,
+          activity,
           sessions,
           findings,
-          reports: reports.filter(
-            (r) =>
-              (r.session_id && sessionIds.has(r.session_id)) ||
-              (r.document_id && docIds.has(r.document_id)),
-          ),
         });
-      } catch {
+      } catch (e) {
         if (!cancelled) {
-          setStageInfo({ stageId: currentStageId, docs: [], sessions: [], reports: [], findings: [] });
+          setStageInfo(null);
+          setStageInfoError({ stageId: currentStageId, message: messageOf(e) });
         }
       }
     })();
@@ -743,6 +787,8 @@ export default function DashboardPage() {
         { stageId },
       );
       setData({ programme: data.programme, instances });
+      setStageInfo(null);
+      setStageInfoError(null);
       setCurrentStageId(stageId);
     } catch (e) {
       setError(messageOf(e));
@@ -759,6 +805,8 @@ export default function DashboardPage() {
   const currentStage = gates.find((s) => s.id === currentStageId) ?? gates[0];
   const currentNumeral = ROMAN[Math.max(0, gates.findIndex((s) => s.id === currentStageId))];
   const info = stageInfo?.stageId === currentStage.id ? stageInfo : null;
+  const infoError =
+    stageInfoError?.stageId === currentStage.id ? stageInfoError.message : null;
 
   return (
     <div className="mx-auto max-w-[1140px] px-5 py-12 md:px-9 md:py-13">
@@ -789,6 +837,7 @@ export default function DashboardPage() {
           instance={byStage.get(currentStage.id)}
           numeral={currentNumeral}
           info={info}
+          infoError={infoError}
           onEditStages={() => setOnboardingOpen(true)}
         />
       </div>

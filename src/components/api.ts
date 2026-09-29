@@ -99,6 +99,7 @@ export const STAGE_PRIMARY_KIND: Record<string, DocumentKind> = {
 export const ACTIVITY_LABELS: Record<ActivityId, string> = {
   doc_feedback: "Document feedback",
   mock_viva: "Mock viva",
+  peer_review: "Written peer review",
   rebuttal_roleplay: "Rebuttal role-play",
   writing_support: "Writing support",
   viva_prep: "Viva preparation",
