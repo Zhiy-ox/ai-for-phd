@@ -12,7 +12,8 @@ import { responseLetterMeta } from "./meta";
 import { completeJsonWithUsageTracking } from "@/lib/providers/usage-completion";
 import type { VivaConfig } from "@/lib/viva/types";
 import { PeerReviewResultSchema } from "@/lib/review/prompts";
-import type { PeerReviewResult } from "@/lib/review/types";
+import { parseImportedReview, type PeerReviewResult } from "@/lib/review/types";
+import { assembleLetterFromImport } from "./import";
 import { getActiveProgrammeId } from "@/lib/programme";
 
 export interface RebuttalLetter {
@@ -242,9 +243,15 @@ export async function draftRebuttalLetterFromReview(
   } catch {
     throw new RebuttalRequestError(400, "This review has invalid structured reviewer comments.");
   }
-  const parsedReview = PeerReviewResultSchema.safeParse(rawReview);
-  if (!parsedReview.success) {
-    throw new RebuttalRequestError(400, "This report is not a three-reviewer written peer review.");
+  // Real comments imported from a decision letter already carry a draft
+  // reply per comment; AI-generated packets go through the drafting model.
+  const imported = parseImportedReview(reviewReport.rubric_json);
+  const parsedReview = imported ? null : PeerReviewResultSchema.safeParse(rawReview);
+  if (parsedReview && !parsedReview.success) {
+    throw new RebuttalRequestError(
+      400,
+      "This report is not a written peer review or an imported set of reviewer comments.",
+    );
   }
   const manuscript = getDocument(reviewReport.document_id);
   if (!manuscript) {
@@ -280,8 +287,19 @@ export async function draftRebuttalLetterFromReview(
   );
   if (existing) return existing;
 
+  if (imported) {
+    const letter = assembleLetterFromImport(imported);
+    return insertReport({
+      documentId: manuscript.id,
+      type: "rebuttal_letter",
+      rubric: { ...letter, source_review_id: reviewReport.id },
+      contentMd: renderRebuttalMarkdown(letter),
+    });
+  }
+  const peerReview = parsedReview!.data;
+
   const { provider, model } = resolveProviderAndModel(opts);
-  const expectedSources = peerReviewPointLabels(parsedReview.data);
+  const expectedSources = peerReviewPointLabels(peerReview);
   const systemPrompt = [
     "You are an experienced academic co-author drafting a point-by-point response-to-reviewers letter from a written peer-review packet. Write in the first person plural (\"we\"), courteous and confident. Answer every substantive point in reviewer order, concede where warranted, and state a concrete manuscript change.",
     "",
@@ -307,7 +325,7 @@ export async function draftRebuttalLetterFromReview(
     "</manuscript>",
     "",
     "<written_peer_review>",
-    clip(JSON.stringify(parsedReview.data, null, 2)),
+    clip(JSON.stringify(peerReview, null, 2)),
     "</written_peer_review>",
     "",
     "Draft the complete response letter now. Output only the fenced JSON block.",
@@ -315,7 +333,7 @@ export async function draftRebuttalLetterFromReview(
   const result = await completeJsonWithUsageTracking(
     provider,
     { systemPrompt, userMessage, model },
-    rebuttalLetterSchemaForReview(parsedReview.data),
+    rebuttalLetterSchemaForReview(peerReview),
     signal,
   );
   if (!result.ok) {

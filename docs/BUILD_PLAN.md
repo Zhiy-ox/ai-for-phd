@@ -113,7 +113,7 @@ src/
 | Examiner styles | ✅ | `PanelStyle` (supportive/standard/hostile + focus) → planner & panel prompts; picker in session setup |
 | Open-source release | ✅ | MIT LICENSE, product README, repo public with topics |
 | Motion & first-run guidance | ✅ | `anim-*` entrance utilities + celebration `Burst`/`TypingDots`/`AnimatedCheck` (ui.tsx), staggered page/tab/list transitions everywhere, weakness-resolve & pass-verdict celebrations, dashboard coach-mark tour (`coach-tour.tsx`) + guided empty states |
-| Tests | ✅ | 123 vitest tests: extraction, providers/quota memory, JSON parse/retry, templates, written peer review/rebuttal coverage (incl. failed-draft retry), findings/score deltas, programme boundaries, migration v5 backfill, stage activity |
+| Tests | ✅ | 132 vitest tests (incl. real-comment import): extraction, providers/quota memory, JSON parse/retry, templates, written peer review/rebuttal coverage (incl. failed-draft retry), findings/score deltas, programme boundaries, migration v5 backfill, stage activity |
 
 ---
 
@@ -345,6 +345,35 @@ and the owner would voluntarily run a second drill.*
   import `StageActivity`/`PanelProgress` from the repo instead of redeclaring.
   (8) Session views resolve stages with `findStage(stageId,
   session.programme_id)`. 123 tests.
+- ✅ **Import real reviewer comments** (Claude, 2026-10-09; owner request).
+  Papers & Rebuttals → Reviewer comments step gains an "Import the
+  reviewers' comments" panel: paste the decision letter (saved as a
+  `referee_reports` document for provenance) or pick an uploaded one.
+  `src/lib/rebuttal/import.ts` `importReviewerComments()` splits the letter
+  into comments whose `text` MUST be verbatim — `importedReviewSchemaFor()`
+  rejects paraphrase via a punctuation/case-insensitive head+tail match
+  (`isVerbatimFrom`), and the JSON retry names the offending comment id.
+  Each comment carries category (major/minor/editorial), stance
+  (agree_revise/clarify/partially_agree/respectfully_disagree), a "how to
+  solve it" suggestion, action steps, effort, manuscript anchor, and a draft
+  reply with [ADD: …] placeholders (never invented data). Stored as
+  `doc_review` with rubric `format: "imported_review"` (types in
+  `src/lib/review/types.ts`, `parseImportedReview` is client-safe); verdict =
+  the letter's decision; major comments seed the weakness ledger. Route:
+  `POST /api/documents/[id]/import-comments` (id = manuscript; body `{text}`
+  or `{commentsDocumentId}`; `CommentImportError` → 400/404/409, 502 when
+  the model output never validates — the letter is kept for a retry).
+  `draftRebuttalLetterFromReview` assembles the response letter from the
+  per-comment drafts deterministically (NO AI call) via
+  `assembleLetterFromImport`. Stage activity / gate summary count
+  `imported_review` as reviewer comments; `ReportSummary.format` labels it in
+  lists. Report page `ImportedReviewView`: decision banner, strategy,
+  per-comment cards with verbatim quote, chips, ticked revision steps
+  (localStorage progress bar), category filters, copyable draft replies;
+  letter button logic shared via `useResponseLetter`. Live acceptance (Codex,
+  isolated DATA_DIR, synthetic letter): praise skipped, a two-request
+  paragraph split, all texts passed the verbatim check, decision read,
+  placeholders used, letter assembled instantly. 132 tests.
 
 **M2 — Public launch (v1.2).**
 - `docs/` landing page on GitHub Pages: screenshots, a 60-second demo

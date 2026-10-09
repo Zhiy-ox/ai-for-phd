@@ -8,9 +8,15 @@ import type { ReportRow } from "@/lib/db/repos/reports";
 import type { ProgrammeTemplate } from "@/lib/template";
 import type { VivaAssessment } from "@/lib/viva/types";
 import {
+  IMPORTED_EFFORT_LABELS,
+  IMPORTED_STANCE_LABELS,
   isPeerReviewResult,
+  parseImportedReview,
   type DocReviewResult,
   type DocReviewSection,
+  type ImportedCommentCategory,
+  type ImportedCommentStance,
+  type ImportedReviewResult,
   type PeerReviewerId,
   type PeerReviewResult,
 } from "@/lib/review/types";
@@ -18,7 +24,7 @@ import { findPreviousDocReview, parseDocReviewResult } from "@/lib/review/score-
 import { responseLetterMeta } from "@/lib/rebuttal/meta";
 import { apiGet, apiSend, formatDate, formatDateTime, messageOf } from "@/components/api";
 import { Markdown } from "@/components/markdown";
-import { Burst, Button, Card, Chip, ErrorBanner, PageLoading, SectionLabel, Spinner } from "@/components/ui";
+import { Burst, Button, Card, Chip, ErrorBanner, PageLoading, SectionLabel, Spinner, type ChipTone } from "@/components/ui";
 import type { CSSProperties } from "react";
 
 function parseRubric<T>(report: ReportRow): T | null {
@@ -361,26 +367,18 @@ const PEER_REVIEWER_META: Record<
 
 const PEER_REVIEWER_ORDER: PeerReviewerId[] = ["reviewer_1", "reviewer_2", "reviewer_3"];
 
-function PeerReviewView({
-  review,
-  report,
-  programme,
-}: {
-  review: PeerReviewResult;
-  report: ReportRow;
-  programme: ProgrammeTemplate | null;
-}) {
+// The response letter answering a reviewer-comments report: finds an
+// existing finished letter, or creates one on demand.
+function useResponseLetter(report: ReportRow) {
   const [drafting, setDrafting] = useState(false);
-  const [existingResponseId, setExistingResponseId] = useState<string | null | undefined>(() =>
+  const [existingId, setExistingId] = useState<string | null | undefined>(() =>
     report.document_id ? undefined : null,
   );
   const [error, setError] = useState<string | null>(null);
   const router = useRouter();
 
   useEffect(() => {
-    if (!report.document_id) {
-      return;
-    }
+    if (!report.document_id) return;
     let cancelled = false;
     void apiGet<{ reports: ReportRow[] }>(
       `/api/reports?documentId=${encodeURIComponent(report.document_id)}&type=rebuttal_letter`,
@@ -393,17 +391,17 @@ function PeerReviewView({
           const meta = responseLetterMeta(candidate.rubric_json);
           return meta.complete && meta.sourceReviewId === report.id;
         });
-        setExistingResponseId(response?.id ?? null);
+        setExistingId(response?.id ?? null);
       })
       .catch(() => {
-        if (!cancelled) setExistingResponseId(null);
+        if (!cancelled) setExistingId(null);
       });
     return () => {
       cancelled = true;
     };
   }, [report.document_id, report.id]);
 
-  async function draftResponse() {
+  async function create() {
     setDrafting(true);
     setError(null);
     try {
@@ -418,6 +416,55 @@ function PeerReviewView({
     }
   }
 
+  return { existingId, drafting, error, create };
+}
+
+function ResponseLetterButton({
+  letter,
+  idleLabel,
+  busyLabel,
+}: {
+  letter: ReturnType<typeof useResponseLetter>;
+  idleLabel: string;
+  busyLabel: string;
+}) {
+  if (letter.existingId) {
+    return (
+      <Link
+        href={`/reports/${letter.existingId}`}
+        className="no-print inline-flex min-h-11 w-full items-center justify-center rounded-xl bg-oxford px-4 py-2.5 text-sm font-semibold text-white shadow-[0_10px_24px_-12px_rgba(41,83,196,0.7)] transition-all hover:-translate-y-px hover:bg-oxford-mid sm:w-auto"
+      >
+        View response letter →
+      </Link>
+    );
+  }
+  return (
+    <Button
+      onClick={letter.create}
+      disabled={letter.drafting || letter.existingId === undefined}
+      className="no-print min-h-11 w-full sm:w-auto"
+    >
+      {letter.drafting ? <Spinner /> : null}
+      {letter.drafting
+        ? busyLabel
+        : letter.existingId === undefined
+          ? "Checking for response…"
+          : idleLabel}
+    </Button>
+  );
+}
+
+function PeerReviewView({
+  review,
+  report,
+  programme,
+}: {
+  review: PeerReviewResult;
+  report: ReportRow;
+  programme: ProgrammeTemplate | null;
+}) {
+  const letter = useResponseLetter(report);
+
   return (
     <div className="space-y-6">
       <VerdictBanner verdict={review.recommendation} programme={programme} />
@@ -428,27 +475,7 @@ function PeerReviewView({
             <h2 className="font-display text-xl text-ink">Editorial summary</h2>
             <p className="mt-2 text-sm leading-relaxed text-ink-soft">{review.summary}</p>
           </div>
-          {existingResponseId ? (
-            <Link
-              href={`/reports/${existingResponseId}`}
-              className="no-print inline-flex min-h-11 w-full items-center justify-center rounded-xl bg-oxford px-4 py-2.5 text-sm font-semibold text-white shadow-[0_10px_24px_-12px_rgba(41,83,196,0.7)] transition-all hover:-translate-y-px hover:bg-oxford-mid sm:w-auto"
-            >
-              View response letter →
-            </Link>
-          ) : (
-            <Button
-              onClick={draftResponse}
-              disabled={drafting || existingResponseId === undefined}
-              className="no-print min-h-11 w-full sm:w-auto"
-            >
-              {drafting ? <Spinner /> : null}
-              {drafting
-                ? "Drafting response…"
-                : existingResponseId === undefined
-                  ? "Checking for response…"
-                  : "Draft response letter"}
-            </Button>
-          )}
+          <ResponseLetterButton letter={letter} idleLabel="Draft response letter" busyLabel="Drafting response…" />
         </div>
         <p className="mt-3 text-xs leading-relaxed text-ink-faint">
           These are asynchronous written comments, like a journal decision packet—not a live
@@ -456,7 +483,7 @@ function PeerReviewView({
         </p>
       </Card>
 
-      {error ? <ErrorBanner message={error} /> : null}
+      {letter.error ? <ErrorBanner message={letter.error} /> : null}
 
       <div className="space-y-5" aria-label="Written reviewer reports">
         {PEER_REVIEWER_ORDER.map((reviewer, reviewerIndex) => {
@@ -601,6 +628,259 @@ function RebuttalLetterView({ report }: { report: ReportRow }) {
   );
 }
 
+/* ------------------------------------------------------------------ */
+/* Imported real reviewer comments — revision plan                     */
+/* ------------------------------------------------------------------ */
+
+const CATEGORY_TONE: Record<ImportedCommentCategory, ChipTone> = {
+  major: "red",
+  minor: "amber",
+  editorial: "neutral",
+};
+
+const STANCE_TONE: Record<ImportedCommentStance, ChipTone> = {
+  agree_revise: "green",
+  clarify: "navy",
+  partially_agree: "brass",
+  respectfully_disagree: "amber",
+};
+
+const CATEGORY_FILTERS: ("all" | ImportedCommentCategory)[] = ["all", "major", "minor", "editorial"];
+
+function ImportedReviewView({
+  review,
+  report,
+  programme,
+}: {
+  review: ImportedReviewResult;
+  report: ReportRow;
+  programme: ProgrammeTemplate | null;
+}) {
+  const letter = useResponseLetter(report);
+  // Ticked revision steps are a per-browser convenience, not shared state.
+  const storageKey = `aiphd-revision-${report.id}`;
+  const [done, setDone] = useState<Set<string>>(() => {
+    try {
+      const raw = localStorage.getItem(storageKey);
+      return new Set(raw ? (JSON.parse(raw) as string[]) : []);
+    } catch {
+      return new Set();
+    }
+  });
+  const [filter, setFilter] = useState<"all" | ImportedCommentCategory>("all");
+  const [copiedId, setCopiedId] = useState<string | null>(null);
+
+  function toggle(key: string) {
+    const next = new Set(done);
+    if (next.has(key)) next.delete(key);
+    else next.add(key);
+    setDone(next);
+    try {
+      localStorage.setItem(storageKey, JSON.stringify([...next]));
+    } catch {
+      // Private browsing: progress just won't survive a reload.
+    }
+  }
+
+  async function copy(id: string, text: string) {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopiedId(id);
+      setTimeout(() => setCopiedId((current) => (current === id ? null : current)), 1600);
+    } catch {
+      // Clipboard blocked — the text is still selectable on the page.
+    }
+  }
+
+  const actionKeys = review.comments.flatMap((c) => c.actions.map((_, i) => `${c.id}:${i}`));
+  const doneCount = actionKeys.filter((key) => done.has(key)).length;
+  const progress = actionKeys.length > 0 ? doneCount / actionKeys.length : 0;
+  const counts = {
+    major: review.comments.filter((c) => c.category === "major").length,
+    minor: review.comments.filter((c) => c.category === "minor").length,
+    editorial: review.comments.filter((c) => c.category === "editorial").length,
+  };
+  const experiments = review.comments.filter((c) => c.effort === "substantial").length;
+  const visible = review.comments.filter((c) => filter === "all" || c.category === filter);
+  const reviewerOrder = [...new Set(review.comments.map((c) => c.reviewer))];
+
+  return (
+    <div className="space-y-6">
+      {review.decision !== "unknown" ? (
+        <VerdictBanner verdict={review.decision} programme={programme} />
+      ) : null}
+
+      <Card className="anim-rise p-5">
+        <div className="flex flex-col items-stretch gap-3 sm:flex-row sm:items-start">
+          <div className="min-w-0 flex-1">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.18em]" style={{ color: "#a8843c" }}>
+              Real reviewer comments
+            </p>
+            <h2 className="mt-1 font-display text-xl text-ink">What the reviewers want</h2>
+            <p className="mt-2 text-sm leading-relaxed text-ink-soft">{review.editor_summary}</p>
+          </div>
+          <ResponseLetterButton
+            letter={letter}
+            idleLabel="Assemble response letter"
+            busyLabel="Assembling letter…"
+          />
+        </div>
+        <p className="mt-3 text-xs leading-relaxed text-ink-faint">
+          The letter is built from the draft replies below — no extra AI call — and opens for
+          editing. Placeholders like [ADD: …] mark facts only you can supply.
+        </p>
+      </Card>
+
+      {letter.error ? <ErrorBanner message={letter.error} /> : null}
+
+      <Card className="anim-rise p-5" style={{ "--d": "80ms" } as CSSProperties}>
+        <SectionLabel>Revision strategy</SectionLabel>
+        <ol className="mt-2 list-decimal space-y-1.5 pl-5 text-sm leading-relaxed text-ink">
+          {review.strategy.map((point, i) => (
+            <li key={i}>{point}</li>
+          ))}
+        </ol>
+      </Card>
+
+      <Card className="anim-rise no-print p-5" style={{ "--d": "140ms" } as CSSProperties}>
+        <div className="flex flex-wrap items-baseline justify-between gap-2">
+          <SectionLabel>Revision progress</SectionLabel>
+          <span className="text-sm tabular-nums text-ink-soft">
+            {doneCount} / {actionKeys.length} steps done
+          </span>
+        </div>
+        <div className="mt-2.5 h-2 overflow-hidden rounded-full bg-line">
+          <div
+            className="h-full rounded-full transition-all duration-500"
+            style={{
+              width: `${progress * 100}%`,
+              background: progress === 1 ? "#2eb87a" : "linear-gradient(90deg,#a8843c,#2953c4)",
+            }}
+          />
+        </div>
+        <p className="mt-2.5 text-xs text-ink-faint">
+          {review.comments.length} comments · {counts.major} major · {counts.minor} minor ·{" "}
+          {counts.editorial} editorial
+          {experiments > 0
+            ? ` · ${experiments} need${experiments === 1 ? "s" : ""} new experiments`
+            : ""}
+        </p>
+      </Card>
+
+      <div className="no-print flex flex-wrap gap-1.5" role="tablist" aria-label="Filter comments">
+        {CATEGORY_FILTERS.map((option) => {
+          const selected = filter === option;
+          const count = option === "all" ? review.comments.length : counts[option];
+          return (
+            <button
+              key={option}
+              type="button"
+              role="tab"
+              aria-selected={selected}
+              onClick={() => setFilter(option)}
+              className="rounded-full border px-3 py-1.5 text-[12px] font-medium capitalize transition-all duration-200 active:scale-[0.96]"
+              style={
+                selected
+                  ? { background: "#0a1626", borderColor: "#0a1626", color: "#f0d9a0" }
+                  : { background: "#fffdf8", borderColor: "var(--color-line)", color: "#5b6673" }
+              }
+            >
+              {option} ({count})
+            </button>
+          );
+        })}
+      </div>
+
+      {reviewerOrder.map((reviewer) => {
+        const comments = visible.filter((c) => c.reviewer === reviewer);
+        if (comments.length === 0) return null;
+        const summary = review.reviewers.find((r) => r.label === reviewer)?.summary;
+        return (
+          <section key={`${reviewer}-${filter}`} aria-label={reviewer} className="space-y-3">
+            <div>
+              <h2 className="font-display text-2xl text-ink">{reviewer}</h2>
+              {summary ? <p className="mt-1 text-sm text-ink-soft">{summary}</p> : null}
+            </div>
+            {comments.map((c, i) => (
+              <article
+                key={c.id}
+                className="anim-rise-sm rounded-2xl border bg-card p-5"
+                style={
+                  {
+                    "--d": `${i * 50}ms`,
+                    borderColor: c.category === "major" ? "rgba(226,96,79,0.35)" : "var(--color-line)",
+                  } as CSSProperties
+                }
+              >
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="font-display text-base text-ink">{c.id}</span>
+                  <Chip tone={CATEGORY_TONE[c.category]}>{c.category}</Chip>
+                  <Chip tone={STANCE_TONE[c.stance]}>{IMPORTED_STANCE_LABELS[c.stance]}</Chip>
+                  <Chip tone="muted">{IMPORTED_EFFORT_LABELS[c.effort]}</Chip>
+                  {c.manuscript_anchor ? (
+                    <span className="ml-auto text-xs text-ink-faint">{c.manuscript_anchor}</span>
+                  ) : null}
+                </div>
+                <blockquote className="mt-3 whitespace-pre-wrap border-l-2 border-brass/60 pl-3 font-display text-[15px] italic leading-relaxed text-ink-soft">
+                  {c.text}
+                </blockquote>
+                <p className="mt-3 text-sm leading-relaxed text-ink">
+                  <span className="font-semibold text-oxford">How to solve it. </span>
+                  {c.suggestion}
+                </p>
+                {c.actions.length > 0 ? (
+                  <ul className="mt-2.5 space-y-1.5">
+                    {c.actions.map((action, index) => {
+                      const key = `${c.id}:${index}`;
+                      const checked = done.has(key);
+                      return (
+                        <li key={key}>
+                          <label className="flex cursor-pointer items-start gap-2.5 text-sm leading-snug">
+                            <input
+                              type="checkbox"
+                              checked={checked}
+                              onChange={() => toggle(key)}
+                              className="mt-0.5 h-4 w-4 flex-none accent-oxford"
+                            />
+                            <span
+                              className="transition-colors duration-300"
+                              style={{
+                                color: checked ? "#98a1ab" : "var(--color-ink)",
+                                textDecoration: checked ? "line-through" : "none",
+                              }}
+                            >
+                              {action}
+                            </span>
+                          </label>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                ) : null}
+                <details className="mt-3 rounded-xl bg-oxford-faint px-4 py-3">
+                  <summary className="cursor-pointer text-sm font-medium text-oxford">
+                    Draft response
+                  </summary>
+                  <p className="mt-2 whitespace-pre-wrap text-sm leading-relaxed text-ink">
+                    {c.draft_response}
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => copy(c.id, c.draft_response)}
+                    className="no-print mt-2 text-xs font-medium text-oxford transition-colors hover:text-oxford-mid"
+                  >
+                    {copiedId === c.id ? "Copied ✓" : "Copy reply"}
+                  </button>
+                </details>
+              </article>
+            ))}
+          </section>
+        );
+      })}
+    </div>
+  );
+}
+
 export default function ReportPage() {
   const params = useParams<{ id: string }>();
   const [report, setReport] = useState<ReportRow | null>(null);
@@ -639,7 +919,9 @@ export default function ReportPage() {
 
   const isViva = report.type === "viva_assessment";
   const assessment = isViva ? parseRubric<VivaAssessment>(report) : null;
-  const review = !isViva && report.type === "doc_review" ? parseDocReviewResult(report) : null;
+  const imported = report.type === "doc_review" ? parseImportedReview(report.rubric_json) : null;
+  const review =
+    !isViva && !imported && report.type === "doc_review" ? parseDocReviewResult(report) : null;
   const peerReview = review && isPeerReviewResult(review) ? review : null;
   const documentReview = review && !isPeerReviewResult(review) ? review : null;
   const comparison = reviewComparison?.reportId === report.id ? reviewComparison : null;
@@ -668,9 +950,11 @@ export default function ReportPage() {
               ? "Viva assessment report"
               : report.type === "rebuttal_letter"
                 ? "Response to reviewers"
-                : peerReview
-                  ? "Written reviewer comments"
-                  : "Document review"}
+                : imported
+                  ? "Reviewer comments — revision plan"
+                  : peerReview
+                    ? "Written reviewer comments"
+                    : "Document review"}
           </h1>
           <button
             onClick={() => window.print()}
@@ -690,6 +974,8 @@ export default function ReportPage() {
         <RebuttalLetterView report={report} />
       ) : isViva && assessment ? (
         <VivaAssessmentView report={report} assessment={assessment} programme={programme} />
+      ) : imported ? (
+        <ImportedReviewView key={report.id} review={imported} report={report} programme={programme} />
       ) : peerReview ? (
         <PeerReviewView key={report.id} review={peerReview} report={report} programme={programme} />
       ) : documentReview ? (

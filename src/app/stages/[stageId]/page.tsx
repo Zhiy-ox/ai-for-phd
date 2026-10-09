@@ -186,6 +186,186 @@ function StageHeader({
 /* Documents tab                                                       */
 /* ------------------------------------------------------------------ */
 
+/* ------------------------------------------------------------------ */
+/* Import real reviewer comments (Papers & Rebuttals)                  */
+/* ------------------------------------------------------------------ */
+
+const LETTER_PLACEHOLDER = `Paste the reviewers' comments from the decision letter, e.g.
+
+Reviewer #1:
+1. The authors claim a diffraction efficiency of 87%, but no error bars or repeat measurements are reported…
+2. …
+
+Reviewer #2:
+…`;
+
+function ImportCommentsPanel({
+  docs,
+  onImported,
+}: {
+  docs: DocumentSummary[];
+  onImported: () => void;
+}) {
+  const router = useRouter();
+  const manuscripts = docs.filter((d) => d.kind === "paper" && d.has_text);
+  const letters = docs.filter((d) => d.kind === "referee_reports" && d.has_text);
+  const [manuscriptId, setManuscriptId] = useState<string | null>(null);
+  const [source, setSource] = useState<"paste" | "file">("paste");
+  const [letterId, setLetterId] = useState<string | null>(null);
+  const [text, setText] = useState("");
+  const [importing, setImporting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  // Defaults derive from the current lists, so a fresh upload is picked up
+  // without syncing state in an effect.
+  const chosenManuscript = manuscripts.find((d) => d.id === manuscriptId) ?? manuscripts[0];
+  const chosenLetter = letters.find((d) => d.id === letterId) ?? letters[0];
+  const usingFile = source === "file" && letters.length > 0;
+  const ready = Boolean(chosenManuscript) && (usingFile ? Boolean(chosenLetter) : text.trim().length > 0);
+
+  async function runImport() {
+    if (!chosenManuscript) return;
+    setImporting(true);
+    setError(null);
+    try {
+      const { reportId } = await apiSend<{ reportId: string }>(
+        `/api/documents/${chosenManuscript.id}/import-comments`,
+        "POST",
+        usingFile ? { commentsDocumentId: chosenLetter!.id } : { text },
+      );
+      onImported();
+      router.push(`/reports/${reportId}`);
+    } catch (err) {
+      setError(messageOf(err));
+      setImporting(false);
+    }
+  }
+
+  return (
+    <section
+      aria-labelledby="import-comments-title"
+      className="anim-rise-sm rounded-2xl border border-brass/40 bg-gold-bg p-5"
+    >
+      <p className="text-[11px] font-semibold uppercase tracking-[0.18em]" style={{ color: "#a8843c" }}>
+        Real reviews back from a journal?
+      </p>
+      <h2 id="import-comments-title" className="mt-1 font-display text-2xl text-ink">
+        Import the reviewers&apos; comments
+      </h2>
+      <p className="mt-1.5 text-sm leading-relaxed text-ink-soft">
+        Each comment is kept word-for-word and gets a plan: whether to agree, clarify or push
+        back, the concrete changes to make, the effort involved, and a draft reply. Major
+        points join your weakness ledger, and the replies assemble into a response letter.
+      </p>
+
+      {manuscripts.length === 0 ? (
+        <p className="mt-4 rounded-xl border border-dashed border-brass/50 bg-white/70 px-4 py-3 text-sm text-ink-soft">
+          Upload the manuscript above first (kind “Paper / manuscript”) — the plan points each fix
+          at the right section of it.
+        </p>
+      ) : (
+        <div className="mt-4 space-y-3">
+          {manuscripts.length > 1 ? (
+            <label className="block text-sm text-ink-soft">
+              <span className="mb-1.5 block text-xs text-ink-faint">Manuscript the comments are about</span>
+              <select
+                value={chosenManuscript?.id}
+                onChange={(e) => setManuscriptId(e.target.value)}
+                disabled={importing}
+                className="w-full rounded-xl border border-line bg-white px-3.5 py-2 text-sm text-ink focus:border-oxford focus:outline-none"
+              >
+                {manuscripts.map((d) => (
+                  <option key={d.id} value={d.id}>
+                    {d.filename}
+                  </option>
+                ))}
+              </select>
+            </label>
+          ) : (
+            <p className="text-xs text-ink-faint">
+              Manuscript: <span className="font-medium text-ink">{chosenManuscript?.filename}</span>
+            </p>
+          )}
+
+          {letters.length > 0 ? (
+            <div className="inline-flex rounded-xl border border-line bg-white p-1" role="tablist" aria-label="Where the comments come from">
+              {(
+                [
+                  ["paste", "Paste comments"],
+                  ["file", `Uploaded letter (${letters.length})`],
+                ] as const
+              ).map(([id, label]) => (
+                <button
+                  key={id}
+                  type="button"
+                  role="tab"
+                  aria-selected={source === id}
+                  disabled={importing}
+                  onClick={() => setSource(id)}
+                  className="rounded-lg px-3 py-1.5 text-[12.5px] font-medium transition-all duration-200"
+                  style={source === id ? { background: "#0a1626", color: "#f0d9a0" } : { color: "#5b6673" }}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          ) : null}
+
+          {usingFile ? (
+            <label className="block text-sm text-ink-soft">
+              <span className="mb-1.5 block text-xs text-ink-faint">Decision letter</span>
+              <select
+                value={chosenLetter?.id}
+                onChange={(e) => setLetterId(e.target.value)}
+                disabled={importing}
+                className="w-full rounded-xl border border-line bg-white px-3.5 py-2 text-sm text-ink focus:border-oxford focus:outline-none"
+              >
+                {letters.map((d) => (
+                  <option key={d.id} value={d.id}>
+                    {d.filename}
+                  </option>
+                ))}
+              </select>
+            </label>
+          ) : (
+            <div key="paste" className="anim-fade">
+              <textarea
+                value={text}
+                onChange={(e) => setText(e.target.value)}
+                disabled={importing}
+                rows={9}
+                placeholder={LETTER_PLACEHOLDER}
+                aria-label="Reviewer comments"
+                className="w-full rounded-xl border border-line bg-white px-3.5 py-3 font-mono text-[12.5px] leading-relaxed text-ink transition-all focus:border-oxford focus:shadow-[0_0_0_3px_rgba(41,83,196,0.12)] focus:outline-none"
+              />
+              <p className="mt-1 flex justify-between text-[11px] text-ink-faint">
+                <span>
+                  Or upload the letter above as “Referee reports” (.pdf, .docx, .txt, .md).
+                </span>
+                <span className="tabular-nums">{text.length.toLocaleString()} chars</span>
+              </p>
+            </div>
+          )}
+
+          {error ? <ErrorBanner message={error} /> : null}
+
+          <div className="flex flex-wrap items-center gap-3">
+            <Button onClick={runImport} disabled={!ready || importing}>
+              {importing ? <Spinner /> : null}
+              {importing ? "Reading every comment…" : "Import & plan the revision"}
+            </Button>
+            <p className="text-xs text-ink-faint">
+              {importing
+                ? "Splitting the letter and drafting a plan per comment — usually a minute or two."
+                : "Stays on this machine; sent only to your selected AI backend."}
+            </p>
+          </div>
+        </div>
+      )}
+    </section>
+  );
+}
+
 function DocumentsTab({
   stage,
   mode,
@@ -281,6 +461,16 @@ function DocumentsTab({
 
       {error ? <ErrorBanner message={error} /> : null}
 
+      {mode === "feedback" && peerReview && docs !== null ? (
+        <ImportCommentsPanel
+          docs={docs}
+          onImported={() => {
+            load();
+            onActivity?.();
+          }}
+        />
+      ) : null}
+
       <section
         aria-labelledby={mode === "feedback" ? "feedback-actions-title" : undefined}
         className={
@@ -292,7 +482,7 @@ function DocumentsTab({
         {mode === "feedback" ? (
           <div className="mb-4">
             <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-oxford">
-              {peerReview ? "Written peer review" : "Feedback workspace"}
+              {peerReview ? "No reviews yet? Rehearse first" : "Feedback workspace"}
             </p>
             <h2
               id="feedback-actions-title"
@@ -364,7 +554,9 @@ function DocumentsTab({
                     </Chip>
                   )}
                   <span className="ml-auto flex items-center gap-2">
-                    {peerReview && doc.kind !== "paper" ? (
+                    {peerReview && doc.kind === "referee_reports" ? (
+                      <Chip tone="brass">reviewer letter · import it above</Chip>
+                    ) : peerReview && doc.kind !== "paper" ? (
                       <Chip tone="muted">supporting file · manuscript required</Chip>
                     ) : (
                       <Button
@@ -920,9 +1112,11 @@ function ReportsTab({ stage }: { stage: StageTemplate }) {
                   ? "Viva assessment"
                   : report.type === "rebuttal_letter"
                     ? "Response to reviewers"
-                    : hasWrittenPeerReview(stage)
-                      ? "Reviewer comments"
-                      : "Document review"}
+                    : report.format === "imported_review"
+                      ? "Real reviewer comments · revision plan"
+                      : hasWrittenPeerReview(stage)
+                        ? "Reviewer comments"
+                        : "Document review"}
               </span>
               {report.verdict ? (
                 <Chip tone="brass">{report.verdict.replace(/_/g, " ")}</Chip>

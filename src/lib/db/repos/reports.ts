@@ -13,7 +13,11 @@ export interface ReportRow {
   created_at: string;
 }
 
-export type ReportSummary = Omit<ReportRow, "rubric_json" | "content_md">;
+export type ReportSummary = Omit<ReportRow, "rubric_json" | "content_md"> & {
+  // rubric_json.$.format ("peer_review", "imported_review"), so lists can
+  // label a report without downloading its body.
+  format: string | null;
+};
 
 interface ReportFilter {
   programmeId?: string;
@@ -105,7 +109,8 @@ export function listReportSummaries(filter?: ReportFilter): ReportSummary[] {
   const { where, values } = reportFilter(filter);
   return getDb()
     .prepare(
-      `SELECT r.id, r.session_id, r.document_id, r.type, r.verdict, r.created_at
+      `SELECT r.id, r.session_id, r.document_id, r.type, r.verdict, r.created_at,
+              CASE WHEN json_valid(r.rubric_json) THEN json_extract(r.rubric_json, '$.format') END AS format
        FROM reports r
        LEFT JOIN documents d ON d.id = r.document_id
        LEFT JOIN sessions s ON s.id = r.session_id

@@ -41,7 +41,7 @@ export function getStageActivity(programmeId: string, stageId: string): StageAct
            WHERE d.programme_id = ? AND d.stage_id = ? AND r.type = 'doc_review'
              ${
                writtenPeerReview
-                 ? "AND CASE WHEN json_valid(r.rubric_json) THEN json_extract(r.rubric_json, '$.format') END = 'peer_review'"
+                 ? "AND CASE WHEN json_valid(r.rubric_json) THEN json_extract(r.rubric_json, '$.format') END IN ('peer_review', 'imported_review')"
                  : ""
              }
          ) AS reviews,

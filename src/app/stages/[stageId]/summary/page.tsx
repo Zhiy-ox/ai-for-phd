@@ -51,11 +51,13 @@ function parseScores(report: ReportRow): ScoredCriterion[] | null {
 }
 
 // The same discriminator the stage-activity query uses ($.format), so the
-// summary and the stepper agree on what counts as a written peer review.
+// summary and the stepper agree on what counts as reviewer comments: an
+// AI-written referee packet or real comments imported from a journal.
 function isPeerReviewReport(report: ReportRow): boolean {
   if (report.type !== "doc_review" || !report.rubric_json) return false;
   try {
-    return (JSON.parse(report.rubric_json) as { format?: unknown }).format === "peer_review";
+    const format = (JSON.parse(report.rubric_json) as { format?: unknown }).format;
+    return format === "peer_review" || format === "imported_review";
   } catch {
     return false;
   }

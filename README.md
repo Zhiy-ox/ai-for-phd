@@ -31,7 +31,11 @@ manuscript, and a senior reviewer scoring drafts against the departmental rubric
 - **Papers & Rebuttals** — upload a manuscript and receive a realistic written
   packet from Reviewer 1, Reviewer 2, and Reviewer 3. Reviewer 2 is always the
   toughest. Turn the numbered comments directly into an editable point-by-point
-  response letter—no live-viva interaction.
+  response letter—no live-viva interaction. Got **real** reviews back? Paste or
+  upload the journal's decision letter: each comment is kept word-for-word and
+  gets a plan (agree / clarify / push back, concrete revision steps, effort, a
+  draft reply), and the replies assemble into a response letter at no extra
+  AI cost.
 - **Thesis Writing** — chapter-by-chapter feedback against a thesis rubric
   (argument, structure, rigor, literature, prose). Review-only: no panel here.
 - **Final Viva** — the full viva voce against an internal examiner (Dr Rahimi,
