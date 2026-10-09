@@ -7,6 +7,7 @@ import type { ThreadEvent } from "@openai/codex-sdk";
 import {
   buildReplaySystemPrompt,
   errorEventFromUnknown,
+  describeProviderError,
   inferErrorCode,
   mapClaudeMessage,
   renderTranscript,
@@ -31,6 +32,35 @@ describe("inferErrorCode", () => {
     expect(inferErrorCode("Authentication failed")).toBe("not_logged_in");
     expect(inferErrorCode("OAuth token has been revoked")).toBe("not_logged_in");
     expect(inferErrorCode("Invalid API key provided")).toBe("not_logged_in");
+  });
+
+  it("maps unavailable models to model_unavailable, ahead of login checks", () => {
+    expect(
+      inferErrorCode(
+        "The 'gpt-6.1-Sol' model is not supported when using Codex with a ChatGPT account.",
+      ),
+    ).toBe("model_unavailable");
+    expect(inferErrorCode("model_not_found: claude-x")).toBe("model_unavailable");
+    expect(inferErrorCode("Unknown model: foo")).toBe("model_unavailable");
+    expect(inferErrorCode("The model `gpt-9` does not exist")).toBe("model_unavailable");
+    // Neighbouring failures keep their own codes.
+    expect(inferErrorCode("Session xyz was not found")).toBe("session_expired");
+    expect(inferErrorCode("Invalid API key provided")).toBe("not_logged_in");
+  });
+
+  it("unwraps raw API error bodies and adds an actionable hint", () => {
+    const raw =
+      '{"type":"error","status":400,"error":{"type":"invalid_request_error","message":"The \'gpt-6.1-Sol\' model is not supported when using Codex with a ChatGPT account."}}';
+    const { code, message } = describeProviderError(raw);
+    expect(code).toBe("model_unavailable");
+    expect(message).toMatch(/^The 'gpt-6.1-Sol' model is not supported/);
+    expect(message).toContain("Settings → Models");
+    expect(message).not.toContain('"status":400');
+    // Plain messages pass through untouched.
+    expect(describeProviderError("Usage limit reached")).toEqual({
+      code: "usage_limit",
+      message: "Usage limit reached",
+    });
   });
 
   it("maps quota failures to usage_limit", () => {

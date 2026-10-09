@@ -21,22 +21,60 @@ import {
 } from "./types";
 
 // Maps raw failure text from either CLI to our stable error codes. Shared
-// with the Codex adapter.
+// with the Codex adapter. The model check runs first: "...not supported when
+// using Codex with a ChatGPT account" must not read as a login problem.
+const MODEL_UNAVAILABLE_RE =
+  /\bmodel\b[^.]*\b(not supported|not available|does not exist|not found|unknown|invalid)\b|\b(unknown|invalid|unsupported) model\b|model_not_found/i;
+
 export function inferErrorCode(message: string): ProviderErrorCode {
   if (/ENOENT/.test(message)) return "spawn_failed";
+  if (MODEL_UNAVAILABLE_RE.test(message)) return "model_unavailable";
   if (/login|logged in|authenticat|OAuth|API key/i.test(message)) return "not_logged_in";
   if (/usage limit|rate limit|out of.*credit/i.test(message)) return "usage_limit";
   if (/No conversation found|session.*not.*found|resume/i.test(message)) return "session_expired";
   return "unknown";
 }
 
+// CLIs sometimes surface the raw API body ({"type":"error",...,"error":
+// {"message":"..."}}); show the human sentence inside it instead.
+function unwrapApiMessage(message: string): string {
+  const start = message.indexOf("{");
+  if (start === -1) return message;
+  try {
+    const body = JSON.parse(message.slice(start)) as {
+      error?: { message?: unknown };
+      message?: unknown;
+    };
+    const inner = body.error?.message ?? body.message;
+    return typeof inner === "string" && inner.trim() ? inner.trim() : message;
+  } catch {
+    return message;
+  }
+}
+
+/** Stable code plus a message the user can act on. */
+export function describeProviderError(raw: string): {
+  code: ProviderErrorCode;
+  message: string;
+} {
+  const message = unwrapApiMessage(raw);
+  const code = inferErrorCode(message);
+  if (code === "model_unavailable") {
+    return {
+      code,
+      message: `${message} Open Settings → Models and clear that model field (blank uses your CLI's own default), or enter a model your plan supports.`,
+    };
+  }
+  return { code, message };
+}
+
 export function errorEventFromUnknown(
   err: unknown,
 ): Extract<ProviderEvent, { type: "error" }> {
-  const message = err instanceof Error ? err.message : String(err);
+  const raw = err instanceof Error ? err.message : String(err);
   const errno = (err as NodeJS.ErrnoException)?.code;
-  const code = errno === "ENOENT" ? "spawn_failed" : inferErrorCode(message);
-  return { type: "error", code, message };
+  if (errno === "ENOENT") return { type: "error", code: "spawn_failed", message: raw };
+  return { type: "error", ...describeProviderError(raw) };
 }
 
 // Pure mapping from an SDK stdout message to our provider event. Returns null
@@ -57,10 +95,10 @@ export function mapClaudeMessage(msg: SDKMessage): ProviderEvent | null {
       if (!msg.is_error) {
         return { type: "done", fullText: msg.result };
       }
-      return { type: "error", code: inferErrorCode(msg.result), message: msg.result };
+      return { type: "error", ...describeProviderError(msg.result) };
     }
     const message = msg.errors.length > 0 ? msg.errors.join("; ") : msg.subtype;
-    return { type: "error", code: inferErrorCode(message), message };
+    return { type: "error", ...describeProviderError(message) };
   }
   return null;
 }

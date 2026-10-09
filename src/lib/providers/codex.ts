@@ -14,8 +14,8 @@ import { checkCodexAuth } from "./auth-status";
 import { codexBinary } from "./binaries";
 import {
   buildReplaySystemPrompt,
+  describeProviderError,
   errorEventFromUnknown,
-  inferErrorCode,
 } from "./claude";
 import {
   ProviderCallError,
@@ -56,17 +56,9 @@ export class CodexEventMapper {
       case "turn.completed":
         return { type: "done", fullText: this.fullText() };
       case "turn.failed":
-        return {
-          type: "error",
-          code: inferErrorCode(event.error.message),
-          message: event.error.message,
-        };
+        return { type: "error", ...describeProviderError(event.error.message) };
       case "error":
-        return {
-          type: "error",
-          code: inferErrorCode(event.message),
-          message: event.message,
-        };
+        return { type: "error", ...describeProviderError(event.message) };
       default:
         return null;
     }

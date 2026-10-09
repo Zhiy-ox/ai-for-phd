@@ -34,6 +34,9 @@ export type ProviderErrorCode =
   | "spawn_failed"
   | "session_expired"
   | "usage_limit"
+  // The requested model isn't available for this login (e.g. a ChatGPT
+  // account asked for an API-only model) — fixable in Settings.
+  | "model_unavailable"
   | "unknown";
 
 export type ProviderEvent =

@@ -205,7 +205,9 @@ export default function VivaRoomPage() {
                   ? "Log in via Terminal, then send your answer again — nothing is lost."
                   : event.code === "usage_limit"
                     ? "Your subscription hit its usage window. Wait for the reset (or switch provider in a new session) and resend."
-                    : undefined,
+                    : event.code === "model_unavailable"
+                      ? "A session keeps the model it was started with, so after fixing Settings, start a new session."
+                      : undefined,
             });
             break;
         }
