@@ -374,6 +374,14 @@ and the owner would voluntarily run a second drill.*
   isolated DATA_DIR, synthetic letter): praise skipped, a two-request
   paragraph split, all texts passed the verbatim check, decision read,
   placeholders used, letter assembled instantly. 132 tests.
+  Follow-ups (2026-10-09): the panel's "Choose a file" tab uploads a letter
+  inline (.docx/.pdf/.md/.txt/.tex, kind `referee_reports`) and its dropdown
+  lists every readable upload in the stage (reviewer letters first); a letter
+  filed under another kind is accepted and re-filed as `referee_reports`.
+  Default manuscript = longest readable paper. `PATCH /api/documents/[id]`
+  now accepts all seven kinds. Provider errors gained `model_unavailable`
+  (`describeProviderError` in claude.ts unwraps raw API JSON and appends a
+  "clear the model in Settings" hint; checked before login matching).
 
 **M2 — Public launch (v1.2).**
 - `docs/` landing page on GitHub Pages: screenshots, a 60-second demo

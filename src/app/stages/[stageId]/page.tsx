@@ -23,10 +23,13 @@ import {
   ACTIVITY_LABELS,
   apiGet,
   apiSend,
+  apiUpload,
   formatDateTime,
+  KIND_LABELS,
   messageOf,
   STAGE_PRIMARY_KIND,
 } from "@/components/api";
+import { EXTRACTABLE_EXTENSIONS } from "@/lib/extraction/types";
 import { KindBadge, ProviderBadge, StageStatusChip } from "@/components/status-chip";
 import { CountdownChip } from "@/components/countdown";
 import { ProviderPicker } from "@/components/provider-picker";
@@ -200,28 +203,72 @@ Reviewer #2:
 …`;
 
 function ImportCommentsPanel({
+  stageId,
   docs,
+  onDocsChanged,
   onImported,
 }: {
+  stageId: string;
   docs: DocumentSummary[];
+  onDocsChanged: () => void;
   onImported: () => void;
 }) {
   const router = useRouter();
-  const manuscripts = docs.filter((d) => d.kind === "paper" && d.has_text);
-  const letters = docs.filter((d) => d.kind === "referee_reports" && d.has_text);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const readable = docs.filter((d) => d.has_text);
+  const manuscripts = readable.filter((d) => d.kind === "paper");
   const [manuscriptId, setManuscriptId] = useState<string | null>(null);
-  const [source, setSource] = useState<"paste" | "file">("paste");
+  const [source, setSource] = useState<"paste" | "file">(() =>
+    docs.some((d) => d.kind === "referee_reports" && d.has_text) ? "file" : "paste",
+  );
   const [letterId, setLetterId] = useState<string | null>(null);
   const [text, setText] = useState("");
+  const [uploading, setUploading] = useState(false);
   const [importing, setImporting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   // Defaults derive from the current lists, so a fresh upload is picked up
-  // without syncing state in an effect.
-  const chosenManuscript = manuscripts.find((d) => d.id === manuscriptId) ?? manuscripts[0];
-  const chosenLetter = letters.find((d) => d.id === letterId) ?? letters[0];
-  const usingFile = source === "file" && letters.length > 0;
-  const ready = Boolean(chosenManuscript) && (usingFile ? Boolean(chosenLetter) : text.trim().length > 0);
+  // without syncing state in an effect. The longest manuscript is the best
+  // guess for "the paper" when several drafts are uploaded.
+  const chosenManuscript =
+    manuscripts.find((d) => d.id === manuscriptId) ??
+    [...manuscripts].sort((a, b) => (b.char_count ?? 0) - (a.char_count ?? 0))[0];
+  // Any readable upload can be the letter — a .docx filed as a paper too.
+  // Reviewer letters are listed first.
+  const letterCandidates = readable.filter((d) => d.id !== chosenManuscript?.id);
+  const reviewerLetters = letterCandidates.filter((d) => d.kind === "referee_reports");
+  const otherUploads = letterCandidates.filter((d) => d.kind !== "referee_reports");
+  const chosenLetter =
+    letterCandidates.find((d) => d.id === letterId) ?? reviewerLetters[0] ?? otherUploads[0];
+  const usingFile = source === "file";
+  const busy = importing || uploading;
+  const ready =
+    Boolean(chosenManuscript) && (usingFile ? Boolean(chosenLetter) : text.trim().length > 0);
+
+  async function uploadLetter(file: File) {
+    setUploading(true);
+    setError(null);
+    try {
+      const form = new FormData();
+      form.append("file", file);
+      form.append("kind", "referee_reports");
+      form.append("stageId", stageId);
+      const { document } = await apiUpload<{ document: DocumentSummary }>("/api/documents", form);
+      if (!document.has_text) {
+        setError(
+          `Couldn't read any text from "${document.filename}". Try a .docx or .txt version, or paste the comments instead.`,
+        );
+      } else {
+        setLetterId(document.id);
+      }
+      onDocsChanged();
+    } catch (err) {
+      setError(messageOf(err));
+    } finally {
+      setUploading(false);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    }
+  }
 
   async function runImport() {
     if (!chosenManuscript) return;
@@ -271,7 +318,7 @@ function ImportCommentsPanel({
               <select
                 value={chosenManuscript?.id}
                 onChange={(e) => setManuscriptId(e.target.value)}
-                disabled={importing}
+                disabled={busy}
                 className="w-full rounded-xl border border-line bg-white px-3.5 py-2 text-sm text-ink focus:border-oxford focus:outline-none"
               >
                 {manuscripts.map((d) => (
@@ -287,62 +334,106 @@ function ImportCommentsPanel({
             </p>
           )}
 
-          {letters.length > 0 ? (
-            <div className="inline-flex rounded-xl border border-line bg-white p-1" role="tablist" aria-label="Where the comments come from">
-              {(
-                [
-                  ["paste", "Paste comments"],
-                  ["file", `Uploaded letter (${letters.length})`],
-                ] as const
-              ).map(([id, label]) => (
-                <button
-                  key={id}
-                  type="button"
-                  role="tab"
-                  aria-selected={source === id}
-                  disabled={importing}
-                  onClick={() => setSource(id)}
-                  className="rounded-lg px-3 py-1.5 text-[12.5px] font-medium transition-all duration-200"
-                  style={source === id ? { background: "#0a1626", color: "#f0d9a0" } : { color: "#5b6673" }}
-                >
-                  {label}
-                </button>
-              ))}
-            </div>
-          ) : null}
+          <div className="inline-flex rounded-xl border border-line bg-white p-1" role="tablist" aria-label="Where the comments come from">
+            {(
+              [
+                ["file", "Choose a file"],
+                ["paste", "Paste comments"],
+              ] as const
+            ).map(([id, label]) => (
+              <button
+                key={id}
+                type="button"
+                role="tab"
+                aria-selected={source === id}
+                disabled={busy}
+                onClick={() => setSource(id)}
+                className="rounded-lg px-3 py-1.5 text-[12.5px] font-medium transition-all duration-200"
+                style={source === id ? { background: "#0a1626", color: "#f0d9a0" } : { color: "#5b6673" }}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
 
           {usingFile ? (
-            <label className="block text-sm text-ink-soft">
-              <span className="mb-1.5 block text-xs text-ink-faint">Decision letter</span>
-              <select
-                value={chosenLetter?.id}
-                onChange={(e) => setLetterId(e.target.value)}
-                disabled={importing}
-                className="w-full rounded-xl border border-line bg-white px-3.5 py-2 text-sm text-ink focus:border-oxford focus:outline-none"
-              >
-                {letters.map((d) => (
-                  <option key={d.id} value={d.id}>
-                    {d.filename}
-                  </option>
-                ))}
-              </select>
-            </label>
+            <div key="file" className="anim-fade space-y-2.5">
+              {letterCandidates.length > 0 ? (
+                <label className="block text-sm text-ink-soft">
+                  <span className="mb-1.5 block text-xs text-ink-faint">Decision letter</span>
+                  <select
+                    value={chosenLetter?.id}
+                    onChange={(e) => setLetterId(e.target.value)}
+                    disabled={busy}
+                    className="w-full rounded-xl border border-line bg-white px-3.5 py-2 text-sm text-ink focus:border-oxford focus:outline-none"
+                  >
+                    {reviewerLetters.length > 0 ? (
+                      <optgroup label="Reviewer letters">
+                        {reviewerLetters.map((d) => (
+                          <option key={d.id} value={d.id}>
+                            {d.filename}
+                          </option>
+                        ))}
+                      </optgroup>
+                    ) : null}
+                    {otherUploads.length > 0 ? (
+                      <optgroup label="Other uploads in this stage">
+                        {otherUploads.map((d) => (
+                          <option key={d.id} value={d.id}>
+                            {d.filename} · {KIND_LABELS[d.kind]}
+                          </option>
+                        ))}
+                      </optgroup>
+                    ) : null}
+                  </select>
+                </label>
+              ) : null}
+              <div className="flex flex-wrap items-center gap-3">
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept={EXTRACTABLE_EXTENSIONS.join(",")}
+                  className="hidden"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file) void uploadLetter(file);
+                  }}
+                />
+                <Button
+                  variant="secondary"
+                  disabled={busy}
+                  onClick={() => fileInputRef.current?.click()}
+                >
+                  {uploading ? <Spinner /> : null}
+                  {uploading
+                    ? "Reading the file…"
+                    : letterCandidates.length > 0
+                      ? "Upload another letter"
+                      : "Upload the decision letter"}
+                </Button>
+                <span className="text-xs text-ink-faint">
+                  .docx, .pdf, .md, .txt or .tex — the journal&apos;s email or PDF works as-is.
+                </span>
+              </div>
+              {chosenLetter && chosenLetter.kind !== "referee_reports" ? (
+                <p className="text-xs text-ink-faint">
+                  “{chosenLetter.filename}” will be filed as reviewer comments once imported.
+                </p>
+              ) : null}
+            </div>
           ) : (
             <div key="paste" className="anim-fade">
               <textarea
                 value={text}
                 onChange={(e) => setText(e.target.value)}
-                disabled={importing}
+                disabled={busy}
                 rows={9}
                 placeholder={LETTER_PLACEHOLDER}
                 aria-label="Reviewer comments"
                 className="w-full rounded-xl border border-line bg-white px-3.5 py-3 font-mono text-[12.5px] leading-relaxed text-ink transition-all focus:border-oxford focus:shadow-[0_0_0_3px_rgba(41,83,196,0.12)] focus:outline-none"
               />
-              <p className="mt-1 flex justify-between text-[11px] text-ink-faint">
-                <span>
-                  Or upload the letter above as “Referee reports” (.pdf, .docx, .txt, .md).
-                </span>
-                <span className="tabular-nums">{text.length.toLocaleString()} chars</span>
+              <p className="mt-1 text-right text-[11px] tabular-nums text-ink-faint">
+                {text.length.toLocaleString()} chars
               </p>
             </div>
           )}
@@ -350,7 +441,7 @@ function ImportCommentsPanel({
           {error ? <ErrorBanner message={error} /> : null}
 
           <div className="flex flex-wrap items-center gap-3">
-            <Button onClick={runImport} disabled={!ready || importing}>
+            <Button onClick={runImport} disabled={!ready || busy}>
               {importing ? <Spinner /> : null}
               {importing ? "Reading every comment…" : "Import & plan the revision"}
             </Button>
@@ -463,7 +554,9 @@ function DocumentsTab({
 
       {mode === "feedback" && peerReview && docs !== null ? (
         <ImportCommentsPanel
+          stageId={stage.id}
           docs={docs}
+          onDocsChanged={load}
           onImported={() => {
             load();
             onActivity?.();

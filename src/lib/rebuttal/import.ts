@@ -9,6 +9,7 @@ import { documentsDir } from "@/lib/db/client";
 import {
   getDocument,
   insertDocument,
+  updateDocumentMeta,
   updateExtraction,
   type DocumentRow,
 } from "@/lib/db/repos/documents";
@@ -318,10 +319,19 @@ export async function importReviewerComments(
     if (found.programme_id !== programmeId) {
       throw new CommentImportError(409, `"${found.filename}" belongs to another programme.`);
     }
-    if (found.id === manuscript.id || found.kind === "paper") {
-      throw new CommentImportError(400, "Choose the reviewers' letter, not a manuscript.");
+    if (found.id === manuscript.id) {
+      throw new CommentImportError(
+        400,
+        "Choose the reviewers' letter, not the manuscript the comments are about.",
+      );
     }
-    source = found;
+    // Any upload can be the letter (.docx, .pdf, .md, …), whatever kind it
+    // was filed under; once chosen it is filed as reviewer comments so it
+    // stops appearing as a manuscript.
+    source =
+      found.kind === "referee_reports"
+        ? found
+        : (updateDocumentMeta(found.id, { kind: "referee_reports" }) ?? found);
   } else if (args.text?.trim()) {
     if (args.text.length > MAX_LETTER_CHARS) {
       throw new CommentImportError(

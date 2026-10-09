@@ -9,7 +9,17 @@ import {
 export const dynamic = "force-dynamic";
 
 const PatchBodySchema = z.object({
-  kind: z.enum(["transfer_report", "proposal", "paper", "other"]).optional(),
+  kind: z
+    .enum([
+      "transfer_report",
+      "confirmation_report",
+      "proposal",
+      "paper",
+      "referee_reports",
+      "thesis",
+      "other",
+    ])
+    .optional(),
   stageId: z.string().nullable().optional(),
 });
 

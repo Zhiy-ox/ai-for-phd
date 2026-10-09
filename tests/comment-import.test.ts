@@ -233,6 +233,29 @@ describe("importReviewerComments", () => {
     expect(listDocuments({ kind: "referee_reports" })).toHaveLength(before);
   });
 
+  it("accepts a letter uploaded under another kind and re-files it", async () => {
+    const manuscriptId = insertManuscript();
+    const misfiled = insertDocument({
+      programmeId: "oxford-dphil",
+      filename: "Responses to the reviewers.docx",
+      kind: "paper",
+      stageId: "papers",
+      filePath: "/tmp/responses.docx",
+    });
+    updateExtraction(misfiled.id, { text: LETTER, charCount: LETTER.length });
+    providerSpies.complete.mockResolvedValue({ ok: true, value: modelImport(), rawText: "" });
+
+    const report = await importReviewerComments({ manuscriptId, commentsDocumentId: misfiled.id });
+
+    expect(parseImportedReview(report.rubric_json)!.source_document_id).toBe(misfiled.id);
+    expect(getDocument(misfiled.id)!.kind).toBe("referee_reports");
+    // The manuscript itself can never double as the letter.
+    const err = await importReviewerComments({ manuscriptId, commentsDocumentId: manuscriptId }).catch(
+      (e: unknown) => e,
+    );
+    expect((err as InstanceType<typeof CommentImportError>).status).toBe(400);
+  });
+
   it("reports an unparseable model reply as 502 and keeps the letter", async () => {
     const manuscriptId = insertManuscript();
     providerSpies.complete.mockResolvedValue({ ok: false, rawText: "nonsense", error: "bad json" });
